@@ -1,0 +1,6 @@
+*
+!src/**
+!README.md
+!README.*.md
+!LICENSE
+!package.json

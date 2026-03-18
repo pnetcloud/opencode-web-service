@@ -1,0 +1,41 @@
+{
+  "name": "opencode-web-service",
+  "version": "0.1.0",
+  "description": "Set up and manage OpenCode web server as a reliable systemd service",
+  "type": "module",
+  "bin": {
+    "ocweb": "./src/index.js",
+    "opencode-web-service": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "README.*.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "systemd",
+    "service",
+    "cli",
+    "web",
+    "server",
+    "management"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pnetwork/opencode-web-service"
+  },
+  "author": "pNet",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2"
+  }
+}

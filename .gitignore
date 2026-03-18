@@ -1,0 +1,17 @@
+# Ignore everything
+*
+
+# Track source
+!src/
+!src/**
+
+# Track package
+!package.json
+!package-lock.json
+!.npmignore
+!.gitignore
+
+# Track docs
+!README.md
+!README.*.md
+!LICENSE
