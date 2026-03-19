@@ -48,10 +48,11 @@ ocweb setup
 | `ocweb stop` | Stop the service |
 | `ocweb restart` | Restart the service |
 | `ocweb status` | Show service status (state, PID, uptime, URL) |
+| `ocweb doctor` | Check dependencies and service health |
 | `ocweb logs` | Show service logs |
 | `ocweb password` | Change password |
 | `ocweb config` | Show current configuration |
-| `ocweb config set <key> <value>` | Update a setting (port, hostname, workdir) |
+| `ocweb config set <key> <value>` | Update a setting (port, hostname, workdir, username) |
 | `ocweb upgrade` | Upgrade OpenCode & restart service |
 | `ocweb upgrade --schedule "<cron>"` | Set up auto-upgrade via systemd timer |
 | `ocweb uninstall` | Remove service, config, and all related files |
@@ -65,16 +66,32 @@ Use the CLI end to end with these common flows:
 ocweb setup
 ocweb start
 ocweb status
+ocweb doctor
 ocweb logs
 ocweb password
 ocweb config
 ocweb config set port 5000
+ocweb config set username admin
 ocweb restart
 ocweb stop
 ocweb upgrade
 ocweb upgrade --schedule "0 3 * * *"
 ocweb uninstall
 ```
+
+---
+
+## Non-Interactive Setup
+
+Use flags when you want a scripted install:
+
+```bash
+ocweb setup --mode local --port 4096 --hostname localhost --workdir "$HOME" --username opencode --password 'StrongPass1!'
+
+ocweb setup --mode ngrok --port 4096 --workdir "$HOME" --username opencode --password 'StrongPass1!' --ngrok-authtoken 'token_here'
+```
+
+If the service is already configured, add `--force` to overwrite it non-interactively.
 
 ---
 
@@ -123,7 +140,7 @@ Uses systemd timer — no cron needed.
 ## Requirements
 
 - **Linux** with systemd 245+ (Ubuntu 20.04+, Debian 11+, Fedora 33+, Arch)
-- **Node.js** 18+
+- **Node.js** 22+
 - **OpenCode** installed and authenticated ([opencode.ai](https://opencode.ai))
 
 ---
@@ -146,6 +163,7 @@ The service runs `opencode web --port <port> --hostname <hostname>` under your u
 
 **Service won't start**
 ```bash
+ocweb doctor         # Check dependencies and config health
 ocweb logs           # Check logs
 which opencode       # Verify OpenCode is installed
 ```

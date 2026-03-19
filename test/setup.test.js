@@ -57,6 +57,8 @@ function mockDeps(overrides = {}) {
     generateTunnelUnit: () => 'tunnel-unit-content',
     prompt: smartPrompt(),
     parseEnvFileFn: () => ({}),
+    existsSync: () => true,
+    accessSync: () => {},
     writeFileSync: (_path, content) => {
       calls.push('writeFileSync')
       if (typeof content === 'string' && !content.includes('OCWEB_PASSWORD_HASH')) {
@@ -69,6 +71,7 @@ function mockDeps(overrides = {}) {
     _findOpencode: () => '/usr/bin/opencode',
     _findNode: () => '/usr/bin/node',
     _getTunnelServerPath: () => '/usr/lib/tunnel-server.js',
+    importNgrok: async () => ({}),
     getLogs: () => '',
     sleepMs: () => Promise.resolve(),
     log: {
@@ -397,4 +400,100 @@ test('findNode falls back to process.execPath', () => {
     execSync: () => { throw new Error('not found') },
   })
   assert.equal(result, process.execPath)
+})
+
+test('setup stops before writing files when preflight fails', async () => {
+  const deps = mockDeps({
+    execSync: (cmd) => {
+      if (cmd === 'which systemctl') {
+        throw new Error('missing systemctl')
+      }
+      return '/usr/bin/tool\n'
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(deps.calls.includes('exit:1'))
+  assert.ok(!deps.calls.includes('writeFileSync'))
+  assert.ok(!deps.calls.includes('startService'))
+})
+
+test('setup completes non-interactively when all required flags are provided', async () => {
+  let promptCalled = false
+  const deps = mockDeps({
+    prompt: async () => {
+      promptCalled = true
+      return {}
+    },
+  })
+
+  await setup('setup', [
+    '--mode', 'local',
+    '--port', '4096',
+    '--hostname', 'localhost',
+    '--workdir', '/tmp/test',
+    '--username', 'admin',
+    '--password', 'StrongPass1!',
+  ], deps)
+
+  assert.equal(promptCalled, false)
+  assert.ok(deps.calls.includes('startService'))
+})
+
+test('setup rejects incomplete non-interactive flags', async () => {
+  const deps = mockDeps()
+
+  await setup('setup', [
+    '--non-interactive',
+    '--mode', 'local',
+    '--port', '4096',
+  ], deps)
+
+  assert.ok(deps.calls.includes('exit:1'))
+  assert.ok(!deps.calls.includes('writeFileSync'))
+})
+
+test('setup non-interactively reuses env credentials without existing config', async () => {
+  let promptCalled = false
+  const deps = mockDeps({
+    parseEnvFileFn: () => ({
+      OPENCODE_SERVER_USERNAME: 'saveduser',
+      OPENCODE_SERVER_PASSWORD: 'StrongPass1!',
+    }),
+    prompt: async () => {
+      promptCalled = true
+      return {}
+    },
+  })
+
+  await setup('setup', [
+    '--mode', 'local',
+    '--port', '4096',
+    '--hostname', 'localhost',
+    '--workdir', '/tmp/test',
+  ], deps)
+
+  assert.equal(promptCalled, false)
+  assert.ok(deps.calls.includes('startService'))
+})
+
+test('setup rejects partial credential overrides in non-interactive mode', async () => {
+  const deps = mockDeps({
+    parseEnvFileFn: () => ({
+      OPENCODE_SERVER_USERNAME: 'saveduser',
+      OPENCODE_SERVER_PASSWORD: 'StrongPass1!',
+    }),
+  })
+
+  await setup('setup', [
+    '--mode', 'local',
+    '--port', '4096',
+    '--hostname', 'localhost',
+    '--workdir', '/tmp/test',
+    '--username', 'override',
+  ], deps)
+
+  assert.ok(deps.calls.includes('exit:1'))
+  assert.ok(!deps.calls.includes('writeFileSync'))
 })

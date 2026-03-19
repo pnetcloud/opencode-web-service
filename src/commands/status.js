@@ -1,6 +1,6 @@
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, getConfigDir } from '../utils/config.js'
-import { getStatus as _getStatus, isUnitInstalled as _isUnitInstalled } from '../utils/systemd.js'
+import { getStatus as _getStatus, isUnitInstalled as _isUnitInstalled, getLogs as _getLogs, extractPublicUrl } from '../utils/systemd.js'
 import { join } from 'node:path'
 import { existsSync as _existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -54,7 +54,11 @@ export function buildStatusLines(config, st, extra = {}, now = Date.now()) {
   if (config.mode && config.mode !== 'local') {
     lines.push(`Mode: ${config.mode} tunnel`)
     if (config.mode === 'ngrok') {
-      lines.push('Public URL: see "ocweb logs"')
+      if (extra.publicUrl) {
+        lines.push(`Public URL: ${extra.publicUrl}`)
+      } else {
+        lines.push('Public URL: run "ocweb logs" to retrieve the latest tunnel URL')
+      }
     }
   }
 
@@ -79,6 +83,7 @@ export default async function status(_command, _args, deps = {}) {
     ensureSetup = _ensureSetup,
     getStatus = _getStatus,
     isUnitInstalled = _isUnitInstalled,
+    getLogs = _getLogs,
     existsSyncFn = _existsSync,
     log = _log,
   } = deps
@@ -92,6 +97,14 @@ export default async function status(_command, _args, deps = {}) {
     unitInstalled: isUnitInstalled(),
     timerEnabled: existsSyncFn(timerPath),
     configDir,
+  }
+
+  if ((config.mode || 'local') === 'ngrok') {
+    try {
+      extra.publicUrl = extractPublicUrl(getLogs(20))
+    } catch {
+      extra.publicUrl = null
+    }
   }
 
   const output = buildStatusLines(config, st, extra)

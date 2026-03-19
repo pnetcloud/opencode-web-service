@@ -13,12 +13,15 @@ function mockDeps(overrides = {}) {
       workdir: '/home/test',
       username: 'admin',
       opencodePath: '/usr/bin/opencode',
+      mode: 'local',
     }),
     saveConfig: (cfg) => calls.push(`saveConfig:port=${cfg.port}`),
     daemonReload: () => calls.push('daemonReload'),
     restartService: () => calls.push('restartService'),
     generateUnit: () => 'unit-content',
+    parseEnvFileFn: () => ({ OPENCODE_SERVER_PASSWORD: 'StrongPass1!' }),
     writeFileSync: () => calls.push('writeFileSync'),
+    chmodSync: () => calls.push('chmodSync'),
     exitProcess: (code) => calls.push(`exit:${code}`),
     log: {
       error: (msg) => calls.push(`error:${msg}`),
@@ -128,4 +131,16 @@ test('config set rejects empty hostname as missing value', async () => {
 
   assert.ok(deps.calls.some((c) => c.includes('Usage:')))
   assert.ok(deps.calls.includes('exit:1'))
+})
+
+test('config set username rewrites env file and restarts service', async () => {
+  const deps = mockDeps()
+  deps.saveConfig = (cfg) => deps.calls.push(`saveConfig:username=${cfg.username}`)
+
+  await config('config', ['set', 'username', 'newadmin'], deps)
+
+  assert.ok(deps.calls.includes('writeFileSync'))
+  assert.ok(deps.calls.includes('chmodSync'))
+  assert.ok(deps.calls.includes('saveConfig:username=newadmin'))
+  assert.ok(deps.calls.includes('restartService'))
 })

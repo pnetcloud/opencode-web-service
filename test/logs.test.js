@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 
 import logs, { parseLogsArgs } from '../src/commands/logs.js'
 
@@ -85,4 +86,63 @@ test('logs with --since passes since to getLogs', async () => {
   } finally {
     console.log = originalLog
   }
+})
+
+test('logs prints helpful message when no log output is available', async () => {
+  const calls = []
+
+  await logs('logs', [], {
+    ensureSetup: () => {},
+    getLogs: () => '',
+    spawn: () => {},
+    log: {
+      info: (msg) => calls.push(`info:${msg}`),
+      error: (msg) => calls.push(`error:${msg}`),
+      warn: (msg) => calls.push(`warn:${msg}`),
+      dim: () => {},
+    },
+  })
+
+  assert.ok(calls.some((entry) => entry.includes('No recent logs found')))
+})
+
+test('logs rejects invalid --since value in non-follow mode', async () => {
+  const calls = []
+
+  await logs('logs', ['--since', '!!!'], {
+    ensureSetup: () => {},
+    getLogs: () => 'should not be called',
+    spawn: () => {},
+    log: {
+      info: () => {},
+      error: (msg) => calls.push(`error:${msg}`),
+      warn: () => {},
+      dim: () => {},
+    },
+  })
+
+  assert.ok(calls.some((entry) => entry.includes('Invalid value for --since')))
+})
+
+test('logs follow mode reports spawn failure cleanly', async () => {
+  const calls = []
+  const child = new EventEmitter()
+  child.on = child.addListener.bind(child)
+
+  await logs('logs', ['-f'], {
+    ensureSetup: () => {},
+    getLogs: () => '',
+    spawn: () => {
+      queueMicrotask(() => child.emit('error', new Error('spawn failed')))
+      return child
+    },
+    log: {
+      info: () => {},
+      error: (msg) => calls.push(`error:${msg}`),
+      warn: (msg) => calls.push(`warn:${msg}`),
+      dim: () => {},
+    },
+  })
+
+  assert.ok(calls.some((entry) => entry.includes('Failed to follow logs')))
 })

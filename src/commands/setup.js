@@ -1,5 +1,5 @@
 import { execSync as _execSync } from 'node:child_process'
-import { writeFileSync as _writeFileSync, chmodSync as _chmodSync, mkdirSync as _mkdirSync } from 'node:fs'
+import { writeFileSync as _writeFileSync, chmodSync as _chmodSync, mkdirSync as _mkdirSync, existsSync as _existsSync, accessSync as _accessSync, constants as fsConstants } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import { saveConfig as _saveConfig, loadConfig as _loadConfig, getConfigDir } fr
 import { validatePassword, hashPassword as _hashPassword } from '../utils/password.js'
 import { buildEnvFileContent, parseEnvFile as _parseEnvFile, ENV_FILE } from '../utils/env.js'
 import { daemonReload as _daemonReload, enableService as _enableService, startService as _startService, restartService as _restartService, enableLinger as _enableLinger, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, getLogs as _getLogs, UNIT_NAME, SYSTEMD_USER_DIR } from '../utils/systemd.js'
+import { collectDoctorChecks, summarizeDoctorChecks } from './doctor.js'
 
 
 
@@ -35,6 +36,167 @@ export function getTunnelServerPath() {
   return join(__dirname, '..', 'tunnel-server.js')
 }
 
+export function parseSetupArgs(args = []) {
+  const options = {
+    mode: null,
+    port: null,
+    hostname: null,
+    workdir: null,
+    username: null,
+    password: null,
+    ngrokAuthtoken: null,
+    nonInteractive: false,
+    force: false,
+  }
+
+  const flagMap = {
+    '--mode': 'mode',
+    '--port': 'port',
+    '--hostname': 'hostname',
+    '--workdir': 'workdir',
+    '--username': 'username',
+    '--password': 'password',
+    '--ngrok-authtoken': 'ngrokAuthtoken',
+  }
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+
+    if (arg === '--non-interactive' || arg === '-y' || arg === '--yes') {
+      options.nonInteractive = true
+      continue
+    }
+
+    if (arg === '--force') {
+      options.force = true
+      continue
+    }
+
+    const key = flagMap[arg]
+    if (key && args[i + 1] !== undefined) {
+      options[key] = args[i + 1]
+      i++
+    }
+  }
+
+  return options
+}
+
+export function hasProvidedSetupValues(options) {
+  return Boolean(
+    options.mode ||
+    options.port ||
+    options.hostname ||
+    options.workdir ||
+    options.username ||
+    options.password ||
+    options.ngrokAuthtoken
+  )
+}
+
+export function normalizeSetupValue(key, value, deps = {}) {
+  const {
+    existsSync = _existsSync,
+    accessSync = _accessSync,
+  } = deps
+
+  if (key === 'mode') {
+    if (value !== 'local' && value !== 'ngrok') {
+      throw new Error('Mode must be either "local" or "ngrok"')
+    }
+    return value
+  }
+
+  if (key === 'port') {
+    const n = Number(value)
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new Error('Port must be 1-65535')
+    }
+    return n
+  }
+
+  if (key === 'hostname') {
+    if (!value || /\s/.test(value)) {
+      throw new Error('Hostname must be non-empty and contain no whitespace')
+    }
+    return value
+  }
+
+  if (key === 'workdir') {
+    if (!value) {
+      throw new Error('Working directory must be non-empty')
+    }
+    if (!existsSync(value)) {
+      throw new Error(`Working directory does not exist: ${value}`)
+    }
+    try {
+      accessSync(value, fsConstants.R_OK | fsConstants.W_OK)
+    } catch {
+      throw new Error(`Working directory is not writable: ${value}`)
+    }
+    return value
+  }
+
+  if (key === 'username') {
+    if (!value || /\s/.test(value)) {
+      throw new Error('Username must be non-empty and contain no whitespace')
+    }
+    return value
+  }
+
+  if (key === 'password') {
+    const { valid, errors } = validatePassword(value)
+    if (!valid) {
+      throw new Error(errors.join(', '))
+    }
+    return value
+  }
+
+  if (key === 'ngrokAuthtoken') {
+    if (!value || value.length <= 10) {
+      throw new Error('Enter a valid ngrok authtoken')
+    }
+    return value
+  }
+
+  return value
+}
+
+function canRunWithoutPrompts(options, existingEnv = {}) {
+  const mode = options.mode
+  if (!mode || !options.port || !options.workdir) {
+    return false
+  }
+
+  const hasCreds = (options.username && options.password) || (existingEnv.OPENCODE_SERVER_USERNAME && existingEnv.OPENCODE_SERVER_PASSWORD)
+  if (!hasCreds) {
+    return false
+  }
+
+  if (mode === 'local') {
+    return Boolean(options.hostname)
+  }
+
+  return Boolean(options.ngrokAuthtoken || existingEnv.NGROK_AUTHTOKEN)
+}
+
+function logPreflightChecks(checks, log) {
+  for (const check of checks) {
+    const line = `${check.label}: ${check.detail}`
+    if (check.status === 'pass') {
+      log.success(line)
+    } else if (check.status === 'warn') {
+      log.warn(line)
+    } else {
+      log.error(line)
+    }
+
+    if (check.hint) {
+      log.dim(`Hint: ${check.hint}`)
+    }
+  }
+}
+
 export default async function setup(_command, _args, deps = {}) {
   const {
     loadConfig = _loadConfig,
@@ -57,27 +219,49 @@ export default async function setup(_command, _args, deps = {}) {
     _findNode = findNode,
     _getTunnelServerPath = getTunnelServerPath,
     parseEnvFileFn = _parseEnvFile,
+    existsSync = _existsSync,
+    accessSync = _accessSync,
     getLogs = _getLogs,
     sleepMs = (ms) => new Promise(r => setTimeout(r, ms)),
   } = deps
+  const args = _args || []
+  const options = parseSetupArgs(args)
 
   log.info('OpenCode Web Service — Setup Wizard\n')
 
   // Read existing env file for credential reuse
   const existingEnv = parseEnvFileFn(ENV_FILE)
+  const autoNonInteractive = canRunWithoutPrompts(options, existingEnv)
+  const nonInteractive = options.nonInteractive || autoNonInteractive
+
+  const initialChecks = await collectDoctorChecks({ includeConfig: false }, deps)
+  const initialSummary = summarizeDoctorChecks(initialChecks)
+  if (initialSummary.failures.length > 0) {
+    logPreflightChecks(initialChecks, log)
+    log.error('Setup preflight failed.')
+    exitProcess(1)
+    return
+  }
 
   // Check existing config
   const existing = loadConfig()
   if (existing) {
-    const { confirm } = await prompt({
-      type: 'confirm',
-      name: 'confirm',
-      message: 'Service already configured. Reconfigure?',
-      initial: false,
-    })
-    if (!confirm) {
-      log.dim('Cancelled.')
+    if (nonInteractive && !options.force) {
+      log.error('Service already configured. Re-run with --force to overwrite non-interactively.')
+      exitProcess(1)
       return
+    }
+    if (!nonInteractive) {
+      const { confirm } = await prompt({
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Service already configured. Reconfigure?',
+        initial: false,
+      })
+      if (!confirm) {
+        log.dim('Cancelled.')
+        return
+      }
     }
   }
 
@@ -92,38 +276,87 @@ export default async function setup(_command, _args, deps = {}) {
   log.success(`opencode found: ${opencodePath}`)
 
   // Mode selection
-  const modeResponse = await prompt({
-    type: 'select',
-    name: 'mode',
-    message: 'Access mode',
-    choices: [
-      { title: 'local', description: 'Direct access (default)', value: 'local' },
-      { title: 'ngrok', description: 'Tunnel via ngrok (HTTP/2, unlimited tabs)', value: 'ngrok' },
-    ],
-    initial: 0,
-  })
+  let mode
+  if (nonInteractive && !options.mode) {
+    log.error('Missing required setup flags for non-interactive mode: --mode')
+    exitProcess(1)
+    return
+  }
+  if (options.mode) {
+    try {
+      mode = normalizeSetupValue('mode', options.mode)
+    } catch (error) {
+      log.error(error.message)
+      exitProcess(1)
+      return
+    }
+  } else {
+    const modeResponse = await prompt({
+      type: 'select',
+      name: 'mode',
+      message: 'Access mode',
+      choices: [
+        { title: 'local', description: 'Best for localhost, LAN, or private network access you manage', value: 'local' },
+        { title: 'ngrok', description: 'Best for a shareable public tunnel with an ngrok URL', value: 'ngrok' },
+      ],
+      initial: 0,
+    })
 
-  if (!modeResponse.mode) {
+    if (!modeResponse.mode) {
+      log.dim('Cancelled.')
+      exitProcess(0)
+      return
+    }
+
+    mode = modeResponse.mode
+  }
+
+  if (!mode) {
     log.dim('Cancelled.')
     exitProcess(0)
     return
   }
 
-  const mode = modeResponse.mode
+  if (mode === 'local') {
+    log.info('Local mode keeps OpenCode reachable on your chosen hostname/port. Use localhost for this machine only, or 0.0.0.0 for LAN/VPS access you manage.')
+  } else {
+    log.info('ngrok mode keeps the backend on 127.0.0.1 and exposes a public HTTPS URL through ngrok.')
+  }
+
+  const modeChecks = await collectDoctorChecks({ includeConfig: false, requireNgrok: mode === 'ngrok' }, deps)
+  const modeSummary = summarizeDoctorChecks(modeChecks)
+  if (modeSummary.failures.length > 0) {
+    logPreflightChecks(modeChecks.filter((check) => check.status !== 'pass' || check.label === '@ngrok/ngrok'), log)
+    log.error('Setup preflight failed.')
+    exitProcess(1)
+    return
+  }
 
   // Ngrok-specific: authtoken
   let ngrokAuthtoken = null
   if (mode === 'ngrok') {
     const existingToken = existingEnv.NGROK_AUTHTOKEN || null
 
-    if (existingToken) {
+    if (options.ngrokAuthtoken) {
+      try {
+        ngrokAuthtoken = normalizeSetupValue('ngrokAuthtoken', options.ngrokAuthtoken)
+      } catch (error) {
+        log.error(error.message)
+        exitProcess(1)
+        return
+      }
+    }
+
+    if (!ngrokAuthtoken && existingToken) {
       const masked = existingToken.slice(0, 6) + '...' + existingToken.slice(-4)
-      const { keepToken } = await prompt({
-        type: 'confirm',
-        name: 'keepToken',
-        message: `Keep existing ngrok authtoken (${masked})?`,
-        initial: true,
-      })
+      const { keepToken } = nonInteractive
+        ? { keepToken: true }
+        : await prompt({
+          type: 'confirm',
+          name: 'keepToken',
+          message: `Keep existing ngrok authtoken (${masked})?`,
+          initial: true,
+        })
 
       if (keepToken) {
         ngrokAuthtoken = existingToken
@@ -141,7 +374,12 @@ export default async function setup(_command, _args, deps = {}) {
         }
         ngrokAuthtoken = ngrokResponse.authtoken
       }
-    } else {
+    } else if (!ngrokAuthtoken) {
+      if (nonInteractive) {
+        log.error('Missing required setup flags for non-interactive mode: --ngrok-authtoken')
+        exitProcess(1)
+        return
+      }
       const ngrokResponse = await prompt({
         type: 'password',
         name: 'authtoken',
@@ -165,17 +403,43 @@ export default async function setup(_command, _args, deps = {}) {
   let finalUsername = existingUser || 'opencode'
   let finalPassword = null
 
-  if (existing && existingUser && existingPass) {
-    const { keepCreds } = await prompt({
-      type: 'confirm',
-      name: 'keepCreds',
-      message: `Keep existing credentials (${existingUser})?`,
-      initial: true,
-    })
+  if (existingUser && existingPass) {
+    const { keepCreds } = nonInteractive
+      ? { keepCreds: !(options.username || options.password) }
+      : await prompt({
+        type: 'confirm',
+        name: 'keepCreds',
+        message: `Keep existing credentials (${existingUser})?`,
+        initial: true,
+      })
 
     if (keepCreds) {
       finalUsername = existingUser
       finalPassword = existingPass
+    }
+  }
+
+  if (nonInteractive && ((options.username && !options.password) || (options.password && !options.username))) {
+    const missing = options.username ? '--password' : '--username'
+    log.error(`Missing required setup flags for non-interactive mode: ${missing}`)
+    exitProcess(1)
+    return
+  }
+
+  if (nonInteractive && options.mode && !canRunWithoutPrompts(options, existingEnv)) {
+    const missing = []
+    if (!options.port) missing.push('--port')
+    if (!options.workdir) missing.push('--workdir')
+    if (mode === 'local' && !options.hostname) missing.push('--hostname')
+    if (mode === 'ngrok' && !(options.ngrokAuthtoken || existingEnv.NGROK_AUTHTOKEN)) missing.push('--ngrok-authtoken')
+    if (!(options.username && options.password) && !(existingEnv.OPENCODE_SERVER_USERNAME && existingEnv.OPENCODE_SERVER_PASSWORD)) {
+      missing.push('--username')
+      missing.push('--password')
+    }
+    if (missing.length > 0) {
+      log.error(`Missing required setup flags for non-interactive mode: ${missing.join(', ')}`)
+      exitProcess(1)
+      return
     }
   }
 
@@ -184,7 +448,7 @@ export default async function setup(_command, _args, deps = {}) {
       type: 'text',
       name: 'port',
       message: mode === 'ngrok' ? 'Backend port (internal)' : 'Port',
-      initial: existing ? String(existing.port || 4096) : '4096',
+      initial: options.port || (existing ? String(existing.port || 4096) : '4096'),
       validate: (v) => {
         const n = Number(v)
         return (Number.isInteger(n) && n > 0 && n < 65536) || 'Port must be 1-65535'
@@ -198,7 +462,7 @@ export default async function setup(_command, _args, deps = {}) {
       type: 'text',
       name: 'hostname',
       message: 'Hostname',
-      initial: existing ? (existing.hostname || 'localhost') : 'localhost',
+      initial: options.hostname || (existing ? (existing.hostname || 'localhost') : 'localhost'),
     })
   }
 
@@ -207,7 +471,7 @@ export default async function setup(_command, _args, deps = {}) {
       type: 'text',
       name: 'workdir',
       message: 'Working directory',
-      initial: existing ? (existing.workdir || homedir()) : homedir(),
+      initial: options.workdir || (existing ? (existing.workdir || homedir()) : homedir()),
     },
   )
 
@@ -218,7 +482,7 @@ export default async function setup(_command, _args, deps = {}) {
         type: 'text',
         name: 'username',
         message: 'Username (for authentication)',
-        initial: finalUsername,
+        initial: options.username || finalUsername,
       },
       {
         type: 'password',
@@ -232,7 +496,9 @@ export default async function setup(_command, _args, deps = {}) {
     )
   }
 
-  const response = await prompt(mainQuestions)
+  const response = nonInteractive
+    ? Object.fromEntries(mainQuestions.map((question) => [question.name, options[question.name] ?? question.initial]))
+    : await prompt(mainQuestions)
 
   // Check if user cancelled (Ctrl+C)
   const actualPassword = finalPassword || response.password
@@ -242,9 +508,26 @@ export default async function setup(_command, _args, deps = {}) {
     return
   }
 
-  const actualUsername = response.username || finalUsername
+  const actualUsername = response.username || options.username || finalUsername
 
-  const hostname = mode === 'ngrok' ? '127.0.0.1' : response.hostname
+  let normalizedPort
+  let normalizedWorkdir
+  let normalizedHostname
+  try {
+    normalizedPort = normalizeSetupValue('port', response.port, { existsSync, accessSync })
+    normalizedWorkdir = normalizeSetupValue('workdir', response.workdir, { existsSync, accessSync })
+    normalizedHostname = mode === 'ngrok'
+      ? '127.0.0.1'
+      : normalizeSetupValue('hostname', response.hostname, { existsSync, accessSync })
+    normalizeSetupValue('username', actualUsername, { existsSync, accessSync })
+    normalizeSetupValue('password', actualPassword, { existsSync, accessSync })
+  } catch (error) {
+    log.error(error.message)
+    exitProcess(1)
+    return
+  }
+
+  const hostname = normalizedHostname
 
   // Warn on 0.0.0.0 (only relevant for local mode)
   if (hostname === '0.0.0.0') {
@@ -254,9 +537,9 @@ export default async function setup(_command, _args, deps = {}) {
   }
 
   const config = {
-    port: Number(response.port),
+    port: normalizedPort,
     hostname,
-    workdir: response.workdir,
+    workdir: normalizedWorkdir,
     username: actualUsername,
     opencodePath,
     mode,

@@ -14,6 +14,7 @@ test('status command logs success lines for active service', async () => {
       startedAt: 'Wed 2026-03-18 10:00:00 UTC',
     }),
     isUnitInstalled: () => true,
+    getLogs: () => '',
     existsSyncFn: () => false,
     log: {
       success: (msg) => logged.push(`success:${msg}`),
@@ -40,6 +41,7 @@ test('status command logs warn for inactive service', async () => {
       startedAt: null,
     }),
     isUnitInstalled: () => true,
+    getLogs: () => '',
     existsSyncFn: () => false,
     log: {
       success: (msg) => logged.push(`success:${msg}`),
@@ -64,14 +66,15 @@ test('status command shows health warnings', async () => {
         port: 4096,
         _warnings: ['Environment file missing. Run "ocweb setup" to recreate.'],
       }),
-      getStatus: () => ({
+       getStatus: () => ({
         active: true,
         subState: 'running',
         pid: null,
         startedAt: null,
       }),
-      isUnitInstalled: () => true,
-      existsSyncFn: () => false,
+       isUnitInstalled: () => true,
+       getLogs: () => '',
+       existsSyncFn: () => false,
       log: {
         success: () => {},
         info: () => {},
@@ -100,6 +103,7 @@ test('status command shows ngrok tunnel mode info', async () => {
       startedAt: 'Wed 2026-03-18 10:00:00 UTC',
     }),
     isUnitInstalled: () => true,
+    getLogs: () => 'Public URL: https://abc123.ngrok-free.app\n',
     existsSyncFn: () => false,
     log: {
       success: (msg) => logged.push(`success:${msg}`),
@@ -109,5 +113,5 @@ test('status command shows ngrok tunnel mode info', async () => {
   })
 
   assert.ok(logged.some((l) => l.includes('Mode: ngrok tunnel')))
-  assert.ok(logged.some((l) => l.includes('Public URL: see "ocweb logs"')))
+  assert.ok(logged.some((l) => l.includes('https://abc123.ngrok-free.app')))
 })

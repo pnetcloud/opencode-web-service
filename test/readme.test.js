@@ -39,6 +39,7 @@ test('english README covers story 3.1 content requirements', () => {
     'npx opencode-web-service setup',
     '## Commands',
     '## Command Examples',
+    '## Non-Interactive Setup',
     '## Security',
     '## Remote Access',
     '## Auto-Upgrades',
@@ -60,10 +61,12 @@ test('english README covers story 3.1 content requirements', () => {
     'ocweb stop',
     'ocweb restart',
     'ocweb status',
+    'ocweb doctor',
     'ocweb logs',
     'ocweb password',
     'ocweb config',
     'ocweb config set <key> <value>',
+    'ocweb config set username admin',
     'ocweb upgrade',
     'ocweb upgrade --schedule "<cron>"',
     'ocweb uninstall',
@@ -72,4 +75,6 @@ test('english README covers story 3.1 content requirements', () => {
   ]) {
     assert.match(readme, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+
+  assert.match(readme, /Node\.js\*\* 22\+/)
 })

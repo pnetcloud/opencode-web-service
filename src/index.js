@@ -11,6 +11,7 @@ export const COMMANDS = {
   stop:     () => import('./commands/service.js'),
   restart:  () => import('./commands/service.js'),
   status:   () => import('./commands/status.js'),
+  doctor:   () => import('./commands/doctor.js'),
   logs:     () => import('./commands/logs.js'),
   password: () => import('./commands/password.js'),
   config:   () => import('./commands/config.js'),
@@ -95,6 +96,7 @@ export function printHelp(output = console.log) {
     `    ${pc.bold('stop')}                       ${pc.dim('Stop the service')}`,
     `    ${pc.bold('restart')}                    ${pc.dim('Restart the service')}`,
     `    ${pc.bold('status')}                     ${pc.dim('Show service status')}`,
+    `    ${pc.bold('doctor')}                     ${pc.dim('Check dependencies and service health')}`,
     `    ${pc.bold('logs')}                       ${pc.dim('Show service logs')}
     ${pc.bold('logs -f')}                     ${pc.dim('Follow logs in real-time')}
     ${pc.bold('logs -n')} ${pc.magenta('<N>')}                 ${pc.dim('Show last N lines')}
@@ -108,9 +110,6 @@ export function printHelp(output = console.log) {
     `  ${pc.bold(pc.blue('↑ Upgrade'))}`,
     `    ${pc.bold('upgrade')}                    ${pc.dim('Upgrade OpenCode & restart')}`,
     `    ${pc.bold('upgrade --schedule')} ${pc.magenta('<cron>')}  ${pc.dim('Set up auto-upgrade')}`,
-    '',
-    `  ${pc.bold(pc.magenta('📦 Publish'))}`,
-    `    ${pc.bold('publish')}                    ${pc.dim('Publish package to npm')}`,
     '',
     `  ${pc.bold(pc.red('✕ Remove'))}`,
     `    ${pc.bold('uninstall')}                  ${pc.dim('Remove service & config')}`,

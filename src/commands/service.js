@@ -1,6 +1,6 @@
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup } from '../utils/config.js'
-import { startService as _startService, stopService as _stopService, restartService as _restartService, getLogs as _getLogs } from '../utils/systemd.js'
+import { startService as _startService, stopService as _stopService, restartService as _restartService, getLogs as _getLogs, extractPublicUrl } from '../utils/systemd.js'
 
 export default async function service(command, _args, deps = {}) {
   const {
@@ -39,9 +39,8 @@ export default async function service(command, _args, deps = {}) {
         for (const wait of [3000, 3000, 3000]) {
           await sleepMs(wait)
           try {
-            const logs = getLogs(10)
-            const m = logs.match(/Public URL: (https:\/\/[^\s]+)/)
-            if (m) { ngrokUrl = m[1]; break }
+            ngrokUrl = extractPublicUrl(getLogs(10))
+            if (ngrokUrl) break
           } catch { /* retry */ }
         }
         if (ngrokUrl) {

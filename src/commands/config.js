@@ -1,14 +1,14 @@
-import { writeFileSync as _writeFileSync, existsSync } from 'node:fs'
+import { writeFileSync as _writeFileSync, existsSync, chmodSync as _chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, saveConfig as _saveConfig } from '../utils/config.js'
-import { ENV_FILE } from '../utils/env.js'
+import { ENV_FILE, parseEnvFile as _parseEnvFile, buildEnvFileContent } from '../utils/env.js'
 import { daemonReload as _daemonReload, restartService as _restartService, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, UNIT_NAME, SYSTEMD_USER_DIR } from '../utils/systemd.js'
 import { findNode as _findNode, getTunnelServerPath as _getTunnelServerPath } from './setup.js'
 
 
 
-const ALLOWED_KEYS = ['port', 'hostname', 'workdir']
+const ALLOWED_KEYS = ['port', 'hostname', 'workdir', 'username']
 
 export function normalizeConfigValue(key, value, deps = {}) {
   const { existsSyncFn = existsSync } = deps
@@ -38,6 +38,13 @@ export function normalizeConfigValue(key, value, deps = {}) {
     return value
   }
 
+  if (key === 'username') {
+    if (!value || /\s/.test(value)) {
+      throw new Error('Username must be non-empty and contain no whitespace')
+    }
+    return value
+  }
+
   return value
 }
 
@@ -62,7 +69,9 @@ export default async function config(command, args, deps = {}) {
     generateTunnelUnit = _generateTunnelUnit,
     findNode = _findNode,
     getTunnelServerPath = _getTunnelServerPath,
+    parseEnvFileFn = _parseEnvFile,
     writeFileSync = _writeFileSync,
+    chmodSync = _chmodSync,
     log = _log,
     exitProcess = (code) => process.exit(code),
   } = deps
@@ -98,6 +107,23 @@ export default async function config(command, args, deps = {}) {
     }
 
     const newConfig = { ...cfg, [key]: normalizedValue }
+
+    if (key === 'username') {
+      const envVars = parseEnvFileFn(ENV_FILE)
+      if (!envVars.OPENCODE_SERVER_PASSWORD) {
+        log.error('Current environment credentials are missing. Run "ocweb setup" or "ocweb password" first.')
+        exitProcess(1)
+        return
+      }
+
+      writeFileSync(ENV_FILE, buildEnvFileContent({
+        username: normalizedValue,
+        password: envVars.OPENCODE_SERVER_PASSWORD,
+        ngrokAuthtoken: envVars.NGROK_AUTHTOKEN,
+      }), 'utf8')
+      chmodSync(ENV_FILE, 0o600)
+    }
+
     saveConfig(newConfig)
 
     const unitPath = join(SYSTEMD_USER_DIR, UNIT_NAME)

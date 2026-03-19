@@ -30,7 +30,7 @@ export default async function boot(deps = {}) {
   try {
     ngrok = await importNgrok()
   } catch {
-    log.error('@ngrok/ngrok not installed. Run: npm install -g @ngrok/ngrok')
+    log.error('@ngrok/ngrok not installed. Reinstall opencode-web-service with optional dependencies enabled.')
     processObj.exit(1)
     return
   }

@@ -120,6 +120,11 @@ export function getLogs(lines = 50, since = null, deps = {}) {
   return run(cmd, { quiet: true }, deps)
 }
 
+export function extractPublicUrl(output) {
+  const match = String(output || '').match(/Public URL: (https:\/\/[^\s]+)/)
+  return match ? match[1] : null
+}
+
 export function enableLinger(deps = {}) {
   const { userInfoFn = userInfo } = deps
   run(`loginctl enable-linger ${userInfoFn().username}`, {}, deps)

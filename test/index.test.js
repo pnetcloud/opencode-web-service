@@ -32,3 +32,14 @@ test('cli rejects unknown commands', () => {
   assert.match(result.stderr, /Unknown command: badcommand/)
   assert.match(result.stdout, /Usage:.*ocweb/)
 })
+
+test('cli help includes doctor and hides publish from end-user help', () => {
+  const result = spawnSync(process.execPath, [CLI_PATH, '--help'], {
+    encoding: 'utf8',
+    env,
+  })
+
+  assert.equal(result.status, 0)
+  assert.match(result.stdout, /doctor/)
+  assert.doesNotMatch(result.stdout, /Publish package to npm/)
+})

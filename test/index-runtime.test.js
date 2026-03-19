@@ -17,6 +17,8 @@ test('printHelp renders CLI usage and command groups', () => {
   assert.match(output[0], /Usage:.*ocweb/)
   assert.match(output[0], /OpenCode Web Service Manager/)
   assert.match(output[0], /upgrade --schedule/)
+  assert.match(output[0], /doctor/)
+  assert.doesNotMatch(output[0], /Publish package to npm/)
 })
 
 test('main handles help, version, unknown command, and command errors', async () => {
