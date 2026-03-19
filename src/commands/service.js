@@ -13,21 +13,21 @@ export default async function service(command, _args, deps = {}) {
 
   ensureSetup()
 
-  switch (command) {
-    case 'start':
-      log.step('Starting service...')
-      startService()
-      log.success('Service started')
-      break
-    case 'stop':
-      log.step('Stopping service...')
-      stopService()
-      log.success('Service stopped')
-      break
-    case 'restart':
-      log.step('Restarting service...')
-      restartService()
-      log.success('Service restarted')
-      break
+  const actions = {
+    start:   { fn: startService, ok: 'Service started', fail: 'Failed to start service' },
+    stop:    { fn: stopService, ok: 'Service stopped', fail: 'Failed to stop service' },
+    restart: { fn: restartService, ok: 'Service restarted', fail: 'Failed to restart service' },
+  }
+
+  const action = actions[command]
+  if (!action) return
+
+  log.step(`${command.charAt(0).toUpperCase() + command.slice(1)}ing service...`)
+  try {
+    action.fn()
+    log.success(action.ok)
+  } catch (err) {
+    log.error(`${action.fail}: ${err.message}`)
+    log.dim('Run "ocweb logs" for details')
   }
 }

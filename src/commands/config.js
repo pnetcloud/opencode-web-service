@@ -1,4 +1,4 @@
-import { writeFileSync as _writeFileSync } from 'node:fs'
+import { writeFileSync as _writeFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { log as _log } from '../utils/output.js'
@@ -10,17 +10,35 @@ const ENV_FILE = join(getConfigDir(), 'env')
 
 const ALLOWED_KEYS = ['port', 'hostname', 'workdir']
 
-export function normalizeConfigValue(key, value) {
-  if (key !== 'port') {
+export function normalizeConfigValue(key, value, deps = {}) {
+  const { existsSyncFn = existsSync } = deps
+
+  if (key === 'port') {
+    const port = Number(value)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error('Port must be an integer between 1 and 65535')
+    }
+    return port
+  }
+
+  if (key === 'hostname') {
+    if (!value || /\s/.test(value)) {
+      throw new Error('Hostname must be non-empty and contain no whitespace')
+    }
     return value
   }
 
-  const port = Number(value)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('Port must be an integer between 1 and 65535')
+  if (key === 'workdir') {
+    if (!value) {
+      throw new Error('Working directory must be non-empty')
+    }
+    if (!existsSyncFn(value)) {
+      throw new Error(`Working directory does not exist: ${value}`)
+    }
+    return value
   }
 
-  return port
+  return value
 }
 
 export function buildConfigLines(cfg) {
