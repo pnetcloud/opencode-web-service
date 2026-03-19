@@ -96,7 +96,10 @@ export function printHelp(output = console.log) {
     `    ${pc.bold('stop')}                       ${pc.dim('Stop the service')}`,
     `    ${pc.bold('restart')}                    ${pc.dim('Restart the service')}`,
     `    ${pc.bold('status')}                     ${pc.dim('Show service status')}`,
-    `    ${pc.bold('logs')}                       ${pc.dim('Show service logs')}`,
+    `    ${pc.bold('logs')}                       ${pc.dim('Show service logs')}
+    ${pc.bold('logs -f')}                     ${pc.dim('Follow logs in real-time')}
+    ${pc.bold('logs -n')} ${pc.magenta('<N>')}                 ${pc.dim('Show last N lines')}
+    ${pc.bold('logs --since')} ${pc.magenta('<time>')}         ${pc.dim('Logs since time (e.g. "1h ago")')}`,
     '',
     `  ${pc.bold(pc.yellow('⚙ Configure'))}`,
     `    ${pc.bold('password')}                   ${pc.dim('Change password')}`,
