@@ -1,6 +1,6 @@
 {
   "name": "opencode-web-service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Set up and manage OpenCode web server as a reliable systemd service",
   "type": "module",
   "bin": {
