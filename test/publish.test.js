@@ -16,7 +16,7 @@ test('package metadata and npmignore are publish-ready', () => {
   assert.equal(pkg.license, 'MIT')
   assert.equal(pkg.repository.type, 'git')
   assert.equal(pkg.bin.ocweb, './src/index.js')
-  assert.equal(pkg.engines.node, '>=18')
+  assert.equal(pkg.engines.node, '>=22')
   assert.ok(Array.isArray(pkg.files) && pkg.files.includes('src/'))
   assert.ok(Array.isArray(pkg.keywords) && pkg.keywords.length > 0)
 
