@@ -1,8 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+
+const PKG_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version
 
 import { COMMANDS, main, printHelp, readPackageVersion } from '../src/index.js'
 
@@ -83,7 +87,7 @@ test('main surfaces real command error with actual command module', async () => 
 
 test('index exports all command loaders and can read package version', async () => {
   const version = await readPackageVersion()
-  assert.equal(version, '0.1.0')
+  assert.equal(version, PKG_VERSION)
 
   for (const loader of Object.values(COMMANDS)) {
     const mod = await loader()

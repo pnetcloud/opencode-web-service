@@ -6,6 +6,8 @@ import publish, {
   runTests,
   readPkg,
   loadEnvFile,
+  extractChangelogSection,
+  createGitHubRelease,
 } from '../src/commands/publish.js'
 
 test('checkNpmAuth returns username when logged in', () => {
@@ -75,6 +77,8 @@ function mockDeps(overrides = {}) {
     _gitTagAndCommit: (v) => { calls.push(`gitTag:${v}`); return `v${v}` },
     _gitRollbackBump: () => calls.push('gitRollback'),
     _gitPush: (tag) => calls.push(`gitPush:${tag}`),
+    _extractChangelogSection: () => null,
+    _createGitHubRelease: () => { calls.push('ghRelease'); return { ok: true } },
     exitProcess: (code) => calls.push(`exit:${code}`),
     prompt: async (opts) => {
       if (opts.name === 'bump') return { bump: 'none' }
@@ -120,8 +124,14 @@ test('publish with version bump (local)', async () => {
   assert.ok(deps.calls.some((c) => c.startsWith('gitTag:')))
 })
 
-test('publish CI flow: bump → tag → push', async () => {
+test('publish CI flow: bump → tag → push → GitHub Release', async () => {
   const deps = mockDeps({
+    _extractChangelogSection: () => '### Added\n- Cool feature',
+    _createGitHubRelease: (tag, notes) => {
+      deps.calls.push(`ghRelease:${tag}`)
+      deps.calls.push(`ghNotes:${notes}`)
+      return { ok: true }
+    },
     prompt: async (opts) => {
       if (opts.name === 'bump') return { bump: 'patch' }
       if (opts.name === 'method') return { method: 'ci' }
@@ -134,6 +144,8 @@ test('publish CI flow: bump → tag → push', async () => {
   assert.ok(deps.calls.includes('bump:patch'))
   assert.ok(deps.calls.some((c) => c.startsWith('gitTag:')))
   assert.ok(deps.calls.some((c) => c.startsWith('gitPush:')))
+  assert.ok(deps.calls.some((c) => c.startsWith('ghRelease:')))
+  assert.ok(deps.calls.some((c) => c.includes('Cool feature')))
   assert.ok(!deps.calls.some((c) => c.startsWith('publish:')))
 })
 
@@ -214,4 +226,74 @@ test('publish rollback on cancel after bump', async () => {
   assert.ok(deps.calls.includes('bump:minor'))
   assert.ok(deps.calls.includes('gitRollback'))
   assert.ok(!deps.calls.some((c) => c.startsWith('publish:')))
+})
+
+test('extractChangelogSection returns section content for given version', () => {
+  const changelog = [
+    '# Changelog',
+    '',
+    '## [2.0.0] — 2026-03-20',
+    '',
+    '### Added',
+    '- New stuff',
+    '',
+    '## [1.0.0] — 2026-03-19',
+    '',
+    '### Fixed',
+    '- Bug fix',
+  ].join('\n')
+
+  const section = extractChangelogSection('v2.0.0', {
+    existsSync: () => true,
+    readFileSync: () => changelog,
+  })
+  assert.ok(section.includes('### Added'))
+  assert.ok(section.includes('New stuff'))
+  assert.ok(!section.includes('Bug fix'))
+})
+
+test('extractChangelogSection returns null when version not found', () => {
+  const section = extractChangelogSection('v9.9.9', {
+    existsSync: () => true,
+    readFileSync: () => '# Changelog\n\n## [1.0.0]\n\n- stuff',
+  })
+  assert.equal(section, null)
+})
+
+test('extractChangelogSection returns null when no changelog file', () => {
+  const section = extractChangelogSection('v1.0.0', {
+    existsSync: () => false,
+  })
+  assert.equal(section, null)
+})
+
+test('createGitHubRelease returns ok:true on success', () => {
+  const result = createGitHubRelease('v1.0.0', '### Added\n- feature', {
+    execSync: () => '',
+  })
+  assert.deepEqual(result, { ok: true })
+})
+
+test('createGitHubRelease returns ok:false on failure', () => {
+  const result = createGitHubRelease('v1.0.0', null, {
+    execSync: () => { throw new Error('gh not found') },
+  })
+  assert.equal(result.ok, false)
+  assert.ok(result.message.includes('gh not found'))
+})
+
+test('CI flow warns when GitHub Release creation fails', async () => {
+  const deps = mockDeps({
+    _createGitHubRelease: () => ({ ok: false, message: 'gh not installed' }),
+    prompt: async (opts) => {
+      if (opts.name === 'bump') return { bump: 'patch' }
+      if (opts.name === 'method') return { method: 'ci' }
+      if (opts.name === 'push') return { push: true }
+      return {}
+    },
+  })
+  await publish('publish', [], deps)
+
+  assert.ok(deps.calls.some((c) => c.includes('Could not create GitHub Release')))
+  assert.ok(!deps.calls.includes('exit:1'))
 })

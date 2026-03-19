@@ -108,6 +108,43 @@ export function gitPush(tag, deps = {}) {
   execSync(`git push origin ${tag}`, { cwd: PKG_ROOT, stdio: 'inherit' })
 }
 
+export function extractChangelogSection(version, deps = {}) {
+  const { readFileSync = _readFileSync, existsSync = _existsSync } = deps
+  const changelogPath = join(PKG_ROOT, 'CHANGELOG.md')
+  if (!existsSync(changelogPath)) return null
+
+  const content = readFileSync(changelogPath, 'utf8')
+  const bare = version.replace(/^v/, '')
+  const startRe = new RegExp(`^## \\[${bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'm')
+  const startMatch = startRe.exec(content)
+  if (!startMatch) return null
+
+  const afterHeader = content.slice(startMatch.index + startMatch[0].length)
+  const nextSection = afterHeader.search(/^## \[/m)
+  const body = nextSection === -1
+    ? afterHeader
+    : afterHeader.slice(0, nextSection)
+
+  const trimmed = body.replace(/^[^\S\n]*\n/, '').trimEnd()
+  return trimmed || null
+}
+
+export function createGitHubRelease(tag, notes, deps = {}) {
+  const { execSync = _execSync } = deps
+  try {
+    const args = ['gh', 'release', 'create', tag, '--title', tag]
+    if (notes) {
+      args.push('--notes', notes)
+    } else {
+      args.push('--generate-notes')
+    }
+    execSync(args.join(' '), { cwd: PKG_ROOT, stdio: 'pipe', encoding: 'utf8' })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: err.message }
+  }
+}
+
 export default async function publish(_command, _args, deps = {}) {
   const {
     log = _log,
@@ -124,6 +161,8 @@ export default async function publish(_command, _args, deps = {}) {
     _gitRollbackBump = gitRollbackBump,
     _gitPush = gitPush,
     _readPkg = readPkg,
+    _extractChangelogSection = extractChangelogSection,
+    _createGitHubRelease = createGitHubRelease,
   } = deps
 
   const pkg = _readPkg(deps)
@@ -235,8 +274,17 @@ export default async function publish(_command, _args, deps = {}) {
       _gitPush(tag, deps)
       log.success('Pushed!')
       console.log('')
-      log.info(`Next step: create a GitHub Release from tag ${tag}`)
-      log.dim(`  https://github.com/pnetcloud/opencode-web-service/releases/new?tag=${tag}`)
+
+      log.step('Creating GitHub Release...')
+      const notes = _extractChangelogSection(version, deps)
+      const release = _createGitHubRelease(tag, notes, deps)
+      if (release.ok) {
+        log.success(`GitHub Release ${tag} created`)
+        log.dim(`  https://github.com/pnetcloud/opencode-web-service/releases/tag/${tag}`)
+      } else {
+        log.warn(`Could not create GitHub Release: ${release.message}`)
+        log.dim(`  Create manually: https://github.com/pnetcloud/opencode-web-service/releases/new?tag=${tag}`)
+      }
       log.dim('  CI will run tests and publish with provenance automatically.')
     } else {
       log.info(`Run manually: git push && git push origin ${tag}`)
