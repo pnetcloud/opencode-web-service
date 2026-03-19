@@ -1,12 +1,32 @@
 import { execSync as _execSync } from 'node:child_process'
-import { readFileSync as _readFileSync } from 'node:fs'
+import { readFileSync as _readFileSync, existsSync as _existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PKG_PATH = join(__dirname, '..', '..', 'package.json')
+const PKG_ROOT = join(__dirname, '..', '..')
+const PKG_PATH = join(PKG_ROOT, 'package.json')
+
+export function loadEnvFile(deps = {}) {
+  const { readFileSync = _readFileSync, existsSync = _existsSync } = deps
+  const envPath = join(PKG_ROOT, '.env')
+  if (!existsSync(envPath)) return {}
+
+  const content = readFileSync(envPath, 'utf8')
+  const vars = {}
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq === -1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const value = trimmed.slice(eq + 1).trim()
+    if (key && value) vars[key] = value
+  }
+  return vars
+}
 
 export function readPkg(deps = {}) {
   const { readFileSync = _readFileSync } = deps
@@ -23,10 +43,18 @@ export function checkNpmAuth(deps = {}) {
   }
 }
 
+export function setNpmToken(token, deps = {}) {
+  const { execSync = _execSync } = deps
+  execSync(`npm config set //registry.npmjs.org/:_authToken=${token}`, {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  })
+}
+
 export function runTests(deps = {}) {
   const { execSync = _execSync } = deps
   try {
-    execSync('npm test', { encoding: 'utf8', stdio: 'pipe', cwd: join(__dirname, '..', '..') })
+    execSync('npm test', { encoding: 'utf8', stdio: 'pipe', cwd: PKG_ROOT })
     return { ok: true, output: '' }
   } catch (err) {
     return { ok: false, output: err.stdout || err.stderr || err.message }
@@ -38,14 +66,14 @@ export function dryRun(deps = {}) {
   return execSync('npm pack --dry-run 2>&1', {
     encoding: 'utf8',
     stdio: 'pipe',
-    cwd: join(__dirname, '..', '..'),
+    cwd: PKG_ROOT,
   })
 }
 
 export function npmPublish(tag, deps = {}) {
   const { execSync = _execSync } = deps
   const cmd = tag ? `npm publish --tag ${tag}` : 'npm publish'
-  execSync(cmd, { encoding: 'utf8', stdio: 'inherit', cwd: join(__dirname, '..', '..') })
+  execSync(cmd, { encoding: 'utf8', stdio: 'inherit', cwd: PKG_ROOT })
 }
 
 export function bumpVersion(type, deps = {}) {
@@ -53,9 +81,31 @@ export function bumpVersion(type, deps = {}) {
   const result = execSync(`npm version ${type} --no-git-tag-version`, {
     encoding: 'utf8',
     stdio: 'pipe',
-    cwd: join(__dirname, '..', '..'),
+    cwd: PKG_ROOT,
   })
   return result.trim()
+}
+
+export function gitTagAndCommit(version, deps = {}) {
+  const { execSync = _execSync } = deps
+  const tag = version.startsWith('v') ? version : `v${version}`
+  execSync('git add package.json package-lock.json', { cwd: PKG_ROOT, stdio: 'pipe' })
+  execSync(`git commit -m "release: ${tag}"`, { cwd: PKG_ROOT, stdio: 'pipe' })
+  execSync(`git tag ${tag}`, { cwd: PKG_ROOT, stdio: 'pipe' })
+  return tag
+}
+
+export function gitRollbackBump(deps = {}) {
+  const { execSync = _execSync } = deps
+  try {
+    execSync('git checkout package.json package-lock.json', { cwd: PKG_ROOT, stdio: 'pipe' })
+  } catch { /* nothing to rollback */ }
+}
+
+export function gitPush(tag, deps = {}) {
+  const { execSync = _execSync } = deps
+  execSync('git push', { cwd: PKG_ROOT, stdio: 'inherit' })
+  execSync(`git push origin ${tag}`, { cwd: PKG_ROOT, stdio: 'inherit' })
 }
 
 export default async function publish(_command, _args, deps = {}) {
@@ -64,27 +114,47 @@ export default async function publish(_command, _args, deps = {}) {
     prompt = prompts,
     exitProcess = (code) => process.exit(code),
     _checkNpmAuth = checkNpmAuth,
+    _setNpmToken = setNpmToken,
+    _loadEnvFile = loadEnvFile,
     _runTests = runTests,
     _dryRun = dryRun,
     _npmPublish = npmPublish,
     _bumpVersion = bumpVersion,
+    _gitTagAndCommit = gitTagAndCommit,
+    _gitRollbackBump = gitRollbackBump,
+    _gitPush = gitPush,
     _readPkg = readPkg,
   } = deps
 
   const pkg = _readPkg(deps)
   log.info(`Package: ${pkg.name}@${pkg.version}\n`)
 
-  // Step 1: Check npm auth
+  // Step 1: Load .env token if present
+  const env = _loadEnvFile(deps)
+  if (env.NPM_TOKEN) {
+    log.step('Found NPM_TOKEN in .env, configuring...')
+    _setNpmToken(env.NPM_TOKEN, deps)
+  }
+
+  // Step 2: Check npm auth
   log.step('Checking npm authentication...')
   const whoami = _checkNpmAuth(deps)
   if (!whoami) {
-    log.error('Not logged in to npm. Run "npm login" first.')
+    log.error('Not logged in to npm.')
+    if (!env.NPM_TOKEN) {
+      log.dim('Options:')
+      log.dim('  1. Run "npm login"')
+      log.dim('  2. Add NPM_TOKEN to .env (see .env.example)')
+      log.dim('  3. Use CI with Trusted Publishers (recommended)')
+    } else {
+      log.dim('NPM_TOKEN in .env is invalid or expired. Generate a new one at npmjs.com.')
+    }
     exitProcess(1)
     return
   }
   log.success(`Authenticated as: ${whoami}`)
 
-  // Step 2: Run tests
+  // Step 3: Run tests
   log.step('Running tests...')
   const testResult = _runTests(deps)
   if (!testResult.ok) {
@@ -95,12 +165,12 @@ export default async function publish(_command, _args, deps = {}) {
   }
   log.success('All tests passed')
 
-  // Step 3: Dry run
+  // Step 4: Dry run
   log.step('Package contents (dry run):')
   const packOutput = _dryRun(deps)
   console.log(packOutput)
 
-  // Step 4: Version bump
+  // Step 5: Version bump
   const { bump } = await prompt({
     type: 'select',
     name: 'bump',
@@ -125,7 +195,56 @@ export default async function publish(_command, _args, deps = {}) {
     log.success(`Version bumped to ${version}`)
   }
 
-  // Step 5: Tag selection
+  // Step 6: Publish method
+  const { method } = await prompt({
+    type: 'select',
+    name: 'method',
+    message: 'How to publish?',
+    choices: [
+      { title: '🚀 CI (git tag → GitHub Release → Trusted Publishers)', value: 'ci' },
+      { title: '📦 Local (npm publish directly)', value: 'local' },
+    ],
+    initial: 0,
+  })
+
+  if (method === undefined) {
+    if (bump !== 'none') _gitRollbackBump(deps)
+    log.dim('Cancelled.')
+    return
+  }
+
+  if (method === 'ci') {
+    // CI flow: commit, tag, push, suggest release
+    if (bump === 'none') {
+      log.warn('No version bump — nothing to tag. Bump the version first.')
+      return
+    }
+
+    const tag = _gitTagAndCommit(version, deps)
+    log.success(`Committed and tagged ${tag}`)
+
+    const { push } = await prompt({
+      type: 'confirm',
+      name: 'push',
+      message: `Push ${tag} to origin?`,
+      initial: true,
+    })
+
+    if (push) {
+      log.step('Pushing...')
+      _gitPush(tag, deps)
+      log.success('Pushed!')
+      console.log('')
+      log.info(`Next step: create a GitHub Release from tag ${tag}`)
+      log.dim(`  https://github.com/pnetcloud/opencode-web-service/releases/new?tag=${tag}`)
+      log.dim('  CI will run tests and publish with provenance automatically.')
+    } else {
+      log.info(`Run manually: git push && git push origin ${tag}`)
+    }
+    return
+  }
+
+  // Local flow: publish directly
   const { tag } = await prompt({
     type: 'select',
     name: 'tag',
@@ -139,11 +258,11 @@ export default async function publish(_command, _args, deps = {}) {
   })
 
   if (tag === undefined) {
+    if (bump !== 'none') _gitRollbackBump(deps)
     log.dim('Cancelled.')
     return
   }
 
-  // Step 6: Confirmation
   const { confirm } = await prompt({
     type: 'confirm',
     name: 'confirm',
@@ -152,18 +271,26 @@ export default async function publish(_command, _args, deps = {}) {
   })
 
   if (!confirm) {
+    if (bump !== 'none') _gitRollbackBump(deps)
     log.dim('Cancelled.')
     return
   }
 
-  // Step 7: Publish
   log.step('Publishing to npm...')
   try {
     _npmPublish(tag, deps)
     log.success(`Published ${pkg.name}@${version} 🚀`)
     log.info(`Install: npm install -g ${pkg.name}`)
+
+    // Tag in git after successful local publish
+    if (bump !== 'none') {
+      const gitTag = _gitTagAndCommit(version, deps)
+      log.success(`Tagged ${gitTag} in git`)
+      log.dim('Run: git push && git push --tags')
+    }
   } catch (err) {
     log.error(`Publish failed: ${err.message}`)
+    if (bump !== 'none') _gitRollbackBump(deps)
     exitProcess(1)
   }
 }
