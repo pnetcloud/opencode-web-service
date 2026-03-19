@@ -3,7 +3,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, saveConfig as _saveConfig, getConfigDir } from '../utils/config.js'
-import { daemonReload as _daemonReload, restartService as _restartService, generateUnit as _generateUnit, UNIT_NAME } from '../utils/systemd.js'
+import { daemonReload as _daemonReload, restartService as _restartService, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, UNIT_NAME } from '../utils/systemd.js'
+import { findNode as _findNode, getTunnelServerPath as _getTunnelServerPath } from './setup.js'
 
 const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
 const ENV_FILE = join(getConfigDir(), 'env')
@@ -58,6 +59,9 @@ export default async function config(command, args, deps = {}) {
     daemonReload = _daemonReload,
     restartService = _restartService,
     generateUnit = _generateUnit,
+    generateTunnelUnit = _generateTunnelUnit,
+    findNode = _findNode,
+    getTunnelServerPath = _getTunnelServerPath,
     writeFileSync = _writeFileSync,
     log = _log,
     exitProcess = (code) => process.exit(code),
@@ -95,7 +99,16 @@ export default async function config(command, args, deps = {}) {
 
     const newConfig = { ...cfg, [key]: normalizedValue }
     saveConfig(newConfig)
-    writeFileSync(join(SYSTEMD_USER_DIR, UNIT_NAME), generateUnit(newConfig.opencodePath, newConfig, ENV_FILE), 'utf8')
+
+    const unitPath = join(SYSTEMD_USER_DIR, UNIT_NAME)
+    if (newConfig.mode === 'ngrok') {
+      const nodePath = findNode(deps)
+      const tunnelServerPath = getTunnelServerPath()
+      writeFileSync(unitPath, generateTunnelUnit(nodePath, tunnelServerPath, newConfig, ENV_FILE), 'utf8')
+    } else {
+      writeFileSync(unitPath, generateUnit(newConfig.opencodePath, newConfig, ENV_FILE), 'utf8')
+    }
+
     daemonReload()
     restartService()
     log.success(`${key} changed to ${value}, service restarted`)

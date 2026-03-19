@@ -1,16 +1,13 @@
-#!/usr/bin/env node
-
 import { spawn as _spawn } from 'node:child_process'
-import { readFileSync as _readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig as _loadConfig } from './utils/config.js'
+import { parseEnvFile as _parseEnvFile } from './utils/env.js'
 
 export default async function boot(deps = {}) {
   const {
     loadConfig = _loadConfig,
     spawn = _spawn,
-    readFileSync = _readFileSync,
+    parseEnvFileFn = _parseEnvFile,
     processObj = process,
     log = console,
     importNgrok = () => import('@ngrok/ngrok'),
@@ -44,19 +41,8 @@ export default async function boot(deps = {}) {
   // Read env file for opencode credentials + ngrok authtoken
   let envVars = { ...processObj.env }
   if (config.envFile) {
-    try {
-      const envContent = readFileSync(config.envFile, 'utf8')
-      for (const line of envContent.split('\n')) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed.startsWith('#')) continue
-        const idx = trimmed.indexOf('=')
-        if (idx > 0) {
-          envVars[trimmed.slice(0, idx)] = trimmed.slice(idx + 1)
-        }
-      }
-    } catch {
-      // env file missing is non-fatal for opencode, but ngrok needs it
-    }
+    const parsed = parseEnvFileFn(config.envFile)
+    Object.assign(envVars, parsed)
   }
 
   // Spawn opencode backend

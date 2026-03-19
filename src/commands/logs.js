@@ -1,8 +1,6 @@
 import { ensureSetup as _ensureSetup } from '../utils/config.js'
-import { getLogs as _getLogs } from '../utils/systemd.js'
+import { getLogs as _getLogs, UNIT_NAME } from '../utils/systemd.js'
 import { spawn as _spawn } from 'node:child_process'
-
-const UNIT_NAME = 'ocweb.service'
 
 export function parseLogsArgs(args) {
   const opts = { lines: 100, follow: false, since: null }

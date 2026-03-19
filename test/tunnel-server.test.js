@@ -80,7 +80,7 @@ test('boot spawns opencode and returns child', async () => {
       spawned.push({ cmd, args, opts })
       return child
     },
-    readFileSync: () => '',
+    parseEnvFileFn: () => ({}),
     processObj: proc,
     log: { error: () => {}, log: () => {} },
     importNgrok: async () => ngrok,
@@ -110,7 +110,7 @@ test('boot reads env file and passes vars to child', async () => {
       spawnEnv = opts.env
       return child
     },
-    readFileSync: () => 'OPENCODE_SERVER_USERNAME=admin\nOPENCODE_SERVER_PASSWORD=secret\nNGROK_AUTHTOKEN=tok123\n',
+    parseEnvFileFn: () => ({ OPENCODE_SERVER_USERNAME: 'admin', OPENCODE_SERVER_PASSWORD: 'secret', NGROK_AUTHTOKEN: 'tok123' }),
     processObj: proc,
     log: { error: () => {}, log: () => {} },
     importNgrok: async () => mockNgrok(),
@@ -133,7 +133,7 @@ test('boot handles child error', async () => {
       opencodePath: 'opencode',
     }),
     spawn: () => child,
-    readFileSync: () => '',
+    parseEnvFileFn: () => ({}),
     processObj: proc,
     log: { error: () => {}, log: () => {} },
     importNgrok: async () => mockNgrok(),
@@ -157,7 +157,7 @@ test('boot graceful shutdown closes listener and kills child', async () => {
       opencodePath: 'opencode',
     }),
     spawn: () => child,
-    readFileSync: () => '',
+    parseEnvFileFn: () => ({}),
     processObj: proc,
     log: { error: () => {}, log: () => {} },
     importNgrok: async () => ngrok,

@@ -56,7 +56,7 @@ function mockDeps(overrides = {}) {
     generateUnit: () => 'unit-content',
     generateTunnelUnit: () => 'tunnel-unit-content',
     prompt: smartPrompt(),
-    readFileSync: () => { throw new Error('ENOENT') },
+    parseEnvFileFn: () => ({}),
     writeFileSync: (_path, content) => {
       calls.push('writeFileSync')
       if (typeof content === 'string' && !content.includes('OCWEB_PASSWORD_HASH')) {
@@ -304,7 +304,7 @@ test('setup ngrok mode reuses existing authtoken from env file', async () => {
   let keepTokenAsked = false
   let savedConfig
   const deps = mockDeps({
-    readFileSync: () => 'OPENCODE_SERVER_USERNAME=admin\nOPENCODE_SERVER_PASSWORD=StrongPass1!\nNGROK_AUTHTOKEN=existing_token_12345\n',
+    parseEnvFileFn: () => ({ OPENCODE_SERVER_USERNAME: 'admin', OPENCODE_SERVER_PASSWORD: 'StrongPass1!', NGROK_AUTHTOKEN: 'existing_token_12345' }),
     prompt: async (config) => {
       if (!Array.isArray(config) && config.name === 'mode') return { mode: 'ngrok' }
       if (!Array.isArray(config) && config.name === 'keepToken') {
@@ -337,7 +337,7 @@ test('setup reuses credentials when keepCreds is true', async () => {
   let mainQuestionNames = []
   const deps = mockDeps({
     loadConfig: () => ({ port: 4096, hostname: 'localhost', workdir: '/tmp/test' }),
-    readFileSync: () => 'OPENCODE_SERVER_USERNAME=myuser\nOPENCODE_SERVER_PASSWORD=ExistingPass1!\n',
+    parseEnvFileFn: () => ({ OPENCODE_SERVER_USERNAME: 'myuser', OPENCODE_SERVER_PASSWORD: 'ExistingPass1!' }),
     prompt: async (config) => {
       if (!Array.isArray(config) && config.name === 'confirm') return { confirm: true }
       if (!Array.isArray(config) && config.name === 'mode') return { mode: 'local' }

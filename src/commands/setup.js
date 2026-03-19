@@ -1,15 +1,14 @@
 import { execSync as _execSync } from 'node:child_process'
-import { writeFileSync as _writeFileSync, chmodSync as _chmodSync, mkdirSync as _mkdirSync, readFileSync as _readFileSync } from 'node:fs'
+import { writeFileSync as _writeFileSync, chmodSync as _chmodSync, mkdirSync as _mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
 import { saveConfig as _saveConfig, loadConfig as _loadConfig, getConfigDir } from '../utils/config.js'
 import { validatePassword, hashPassword as _hashPassword } from '../utils/password.js'
-import { buildEnvFileContent } from '../utils/env.js'
+import { buildEnvFileContent, parseEnvFile as _parseEnvFile } from '../utils/env.js'
 import { daemonReload as _daemonReload, enableService as _enableService, startService as _startService, restartService as _restartService, enableLinger as _enableLinger, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, getLogs as _getLogs, UNIT_NAME } from '../utils/systemd.js'
-import { dirname, join as joinPath } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
 const ENV_FILE = join(getConfigDir(), 'env')
@@ -34,17 +33,10 @@ export function findNode(deps = {}) {
 
 export function getTunnelServerPath() {
   const __dirname = dirname(fileURLToPath(import.meta.url))
-  return joinPath(__dirname, '..', 'tunnel-server.js')
+  return join(__dirname, '..', 'tunnel-server.js')
 }
 
-export function checkNgrokInstalled() {
-  try {
-    require.resolve('@ngrok/ngrok')
-    return true
-  } catch {
-    return false
-  }
-}
+
 
 export default async function setup(_command, _args, deps = {}) {
   const {
@@ -60,7 +52,6 @@ export default async function setup(_command, _args, deps = {}) {
     generateTunnelUnit = _generateTunnelUnit,
     prompt = prompts,
     writeFileSync = _writeFileSync,
-    readFileSync = _readFileSync,
     chmodSync = _chmodSync,
     mkdirSync = _mkdirSync,
     log = _log,
@@ -68,6 +59,7 @@ export default async function setup(_command, _args, deps = {}) {
     _findOpencode = findOpencode,
     _findNode = findNode,
     _getTunnelServerPath = getTunnelServerPath,
+    parseEnvFileFn = _parseEnvFile,
     getLogs = _getLogs,
     sleepMs = (ms) => new Promise(r => setTimeout(r, ms)),
   } = deps
@@ -75,16 +67,7 @@ export default async function setup(_command, _args, deps = {}) {
   log.info('OpenCode Web Service — Setup Wizard\n')
 
   // Read existing env file for credential reuse
-  let existingEnv = {}
-  try {
-    const envContent = readFileSync(ENV_FILE, 'utf8')
-    for (const line of envContent.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      const idx = trimmed.indexOf('=')
-      if (idx > 0) existingEnv[trimmed.slice(0, idx)] = trimmed.slice(idx + 1)
-    }
-  } catch { /* no existing env */ }
+  const existingEnv = parseEnvFileFn(ENV_FILE)
 
   // Check existing config
   const existing = loadConfig()

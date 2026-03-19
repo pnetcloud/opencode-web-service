@@ -4,8 +4,8 @@
   "description": "Set up and manage OpenCode web server as a reliable systemd service",
   "type": "module",
   "bin": {
-    "ocweb": "./src/index.js",
-    "opencode-web-service": "./src/index.js"
+    "ocweb": "src/index.js",
+    "opencode-web-service": "src/index.js"
   },
   "engines": {
     "node": ">=22"
@@ -28,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pnetcloud/opencode-web-service"
+    "url": "git+https://github.com/pnetcloud/opencode-web-service.git"
   },
   "author": "pNet",
   "scripts": {

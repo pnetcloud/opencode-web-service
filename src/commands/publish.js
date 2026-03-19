@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
+import { parseEnvContent } from '../utils/env.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PKG_ROOT = join(__dirname, '..', '..')
@@ -13,19 +14,7 @@ export function loadEnvFile(deps = {}) {
   const { readFileSync = _readFileSync, existsSync = _existsSync } = deps
   const envPath = join(PKG_ROOT, '.env')
   if (!existsSync(envPath)) return {}
-
-  const content = readFileSync(envPath, 'utf8')
-  const vars = {}
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq === -1) continue
-    const key = trimmed.slice(0, eq).trim()
-    const value = trimmed.slice(eq + 1).trim()
-    if (key && value) vars[key] = value
-  }
-  return vars
+  return parseEnvContent(readFileSync(envPath, 'utf8'))
 }
 
 export function readPkg(deps = {}) {

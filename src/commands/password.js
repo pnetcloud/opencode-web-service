@@ -4,7 +4,7 @@ import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, saveConfig as _saveConfig, getConfigDir } from '../utils/config.js'
 import { validatePassword, hashPassword as _hashPassword } from '../utils/password.js'
-import { buildEnvFileContent } from '../utils/env.js'
+import { buildEnvFileContent, parseEnvFile as _parseEnvFile } from '../utils/env.js'
 import { restartService as _restartService } from '../utils/systemd.js'
 
 const ENV_FILE = join(getConfigDir(), 'env')
@@ -15,6 +15,7 @@ export default async function password(_command, _args, deps = {}) {
     saveConfig = _saveConfig,
     hashPassword = _hashPassword,
     restartService = _restartService,
+    parseEnvFileFn = _parseEnvFile,
     prompt = prompts,
     writeFileSync = _writeFileSync,
     chmodSync = _chmodSync,
@@ -40,12 +41,16 @@ export default async function password(_command, _args, deps = {}) {
 
   const hashedPassword = hashPassword(response.password)
 
+  // Read existing env to preserve NGROK_AUTHTOKEN
+  const existingEnv = parseEnvFileFn(ENV_FILE)
+
   // Update env file
   writeFileSync(
     ENV_FILE,
     buildEnvFileContent({
       username: config.username || 'opencode',
       password: response.password,
+      ngrokAuthtoken: existingEnv.NGROK_AUTHTOKEN || null,
     }),
     'utf8'
   )

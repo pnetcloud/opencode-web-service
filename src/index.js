@@ -21,7 +21,6 @@ export const COMMANDS = {
 
 export async function readPackageVersion() {
   const { readFileSync } = await import('node:fs')
-  const { fileURLToPath } = await import('node:url')
   const { dirname, join } = await import('node:path')
   const __dirname = dirname(fileURLToPath(import.meta.url))
   const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))

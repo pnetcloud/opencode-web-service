@@ -112,7 +112,10 @@ export function getStatus(deps = {}) {
 
 export function getLogs(lines = 50, since = null, deps = {}) {
   let cmd = `journalctl --user -u ${UNIT_NAME} -n ${lines} --no-pager`
-  if (since) cmd += ` --since "${since}"`
+  if (since) {
+    const safe = String(since).replace(/[^a-zA-Z0-9 :._\-]/g, '')
+    cmd += ` --since "${safe}"`
+  }
   return run(cmd, { quiet: true }, deps)
 }
 
