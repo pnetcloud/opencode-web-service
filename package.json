@@ -28,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pnetwork/opencode-web-service"
+    "url": "https://github.com/pnetcloud/opencode-web-service"
   },
   "author": "pNet",
   "scripts": {
