@@ -89,7 +89,7 @@ export function printHelp(output = console.log) {
     usage,
     '',
     `  ${pc.bold(pc.cyan('⚡ Setup'))}`,
-    `    ${pc.bold('setup')}                      ${pc.dim('Interactive setup wizard')}`,
+    `    ${pc.bold('setup')}                      ${pc.dim('Interactive setup wizard (local / ngrok)')}`,
     '',
     `  ${pc.bold(pc.green('▶ Service'))}`,
     `    ${pc.bold('start')}                      ${pc.dim('Start the service')}`,

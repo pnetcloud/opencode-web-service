@@ -1,7 +1,45 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import setup, { findOpencode } from '../src/commands/setup.js'
+import setup, { findOpencode, findNode } from '../src/commands/setup.js'
+
+// Smart mock prompt that handles all setup wizard flows
+function smartPrompt(overrides = {}) {
+  return async (config) => {
+    // Reconfigure confirm
+    if (!Array.isArray(config) && config.name === 'confirm') {
+      return overrides.confirm ?? { confirm: true }
+    }
+    // Mode selection (select type)
+    if (!Array.isArray(config) && config.name === 'mode') {
+      return overrides.mode ?? { mode: 'local' }
+    }
+    // Ngrok authtoken keep/change
+    if (!Array.isArray(config) && config.name === 'keepToken') {
+      return overrides.keepToken ?? { keepToken: true }
+    }
+    // Ngrok authtoken entry
+    if (!Array.isArray(config) && config.name === 'authtoken') {
+      return overrides.authtoken ?? { authtoken: 'ngrok_test_token_12345' }
+    }
+    // Keep existing credentials
+    if (!Array.isArray(config) && config.name === 'keepCreds') {
+      return overrides.keepCreds ?? { keepCreds: false }
+    }
+    // Main wizard questions (array)
+    if (Array.isArray(config)) {
+      if (overrides.mainQuestions) return overrides.mainQuestions(config)
+      return {
+        port: '4096',
+        hostname: 'localhost',
+        workdir: '/tmp/test',
+        username: 'admin',
+        password: 'StrongPass1!',
+      }
+    }
+    return {}
+  }
+}
 
 function mockDeps(overrides = {}) {
   const calls = []
@@ -13,15 +51,12 @@ function mockDeps(overrides = {}) {
     daemonReload: () => calls.push('daemonReload'),
     enableService: () => calls.push('enableService'),
     startService: () => calls.push('startService'),
+    restartService: () => calls.push('restartService'),
     enableLinger: () => calls.push('enableLinger'),
     generateUnit: () => 'unit-content',
-    prompt: async () => ({
-      port: '4096',
-      hostname: 'localhost',
-      workdir: '/tmp/test',
-      username: 'admin',
-      password: 'StrongPass1!',
-    }),
+    generateTunnelUnit: () => 'tunnel-unit-content',
+    prompt: smartPrompt(),
+    readFileSync: () => { throw new Error('ENOENT') },
     writeFileSync: (_path, content) => {
       calls.push('writeFileSync')
       if (typeof content === 'string' && !content.includes('OCWEB_PASSWORD_HASH')) {
@@ -32,6 +67,10 @@ function mockDeps(overrides = {}) {
     mkdirSync: () => calls.push('mkdirSync'),
     exitProcess: (code) => calls.push(`exit:${code}`),
     _findOpencode: () => '/usr/bin/opencode',
+    _findNode: () => '/usr/bin/node',
+    _getTunnelServerPath: () => '/usr/lib/tunnel-server.js',
+    getLogs: () => '',
+    sleepMs: () => Promise.resolve(),
     log: {
       info: () => {},
       success: (msg) => calls.push(`success:${msg}`),
@@ -69,9 +108,9 @@ test('setup exits when opencode not found', async () => {
   assert.ok(!deps.calls.includes('startService'))
 })
 
-test('setup cancels when user aborts prompts', async () => {
+test('setup cancels when user aborts mode prompt', async () => {
   const deps = mockDeps({
-    prompt: async () => ({}),
+    prompt: smartPrompt({ mode: {} }),
   })
   await setup('setup', [], deps)
 
@@ -83,7 +122,7 @@ test('setup asks to reconfigure when config exists', async () => {
   const dimCalls = []
   const deps = mockDeps({
     loadConfig: () => ({ port: 4096 }),
-    prompt: async () => ({ confirm: false }),
+    prompt: smartPrompt({ confirm: { confirm: false } }),
     log: {
       ...mockDeps().log,
       dim: (msg) => dimCalls.push(msg),
@@ -101,23 +140,23 @@ test('setup continues reconfiguration when existing config is confirmed', async 
     loadConfig: () => ({ port: 4096 }),
     prompt: async (config) => {
       promptCalls += 1
-      if (Array.isArray(config)) {
-        return {
-          port: '4096',
-          hostname: 'localhost',
-          workdir: '/tmp/test',
-          username: 'admin',
-          password: 'StrongPass1!',
-        }
+      if (!Array.isArray(config) && config.name === 'confirm') return { confirm: true }
+      if (!Array.isArray(config) && config.name === 'mode') return { mode: 'local' }
+      if (!Array.isArray(config) && config.name === 'keepCreds') return { keepCreds: false }
+      return {
+        port: '4096',
+        hostname: 'localhost',
+        workdir: '/tmp/test',
+        username: 'admin',
+        password: 'StrongPass1!',
       }
-      return { confirm: true }
     },
   })
 
   await setup('setup', [], deps)
 
-  assert.equal(promptCalls, 2)
-  assert.ok(deps.calls.includes('startService'))
+  assert.ok(deps.calls.includes('restartService'), 'should restart, not start, when reconfiguring')
+  assert.ok(!deps.calls.includes('startService'), 'should not call start when reconfiguring')
 })
 
 test('findOpencode returns path when opencode exists', () => {
@@ -136,12 +175,14 @@ test('findOpencode returns null when opencode missing', () => {
 
 test('setup warns for 0.0.0.0 and prompt validators enforce input rules', async () => {
   const warnings = []
-  let questions
+  let mainQuestions
 
   const deps = mockDeps({
     prompt: async (config) => {
+      if (!Array.isArray(config) && config.name === 'mode') return { mode: 'local' }
+      if (!Array.isArray(config) && config.name === 'keepCreds') return { keepCreds: false }
       if (Array.isArray(config)) {
-        questions = config
+        mainQuestions = config
         return {
           port: '4096',
           hostname: '0.0.0.0',
@@ -161,9 +202,199 @@ test('setup warns for 0.0.0.0 and prompt validators enforce input rules', async 
 
   await setup('setup', [], deps)
 
-  assert.equal(questions[0].validate('70000'), 'Port must be 1-65535')
-  assert.equal(questions[0].validate('4096'), true)
-  assert.equal(questions[4].validate('short'), 'Minimum 8 characters, At least 1 digit, At least 1 special character (!@#$%^&* etc.)')
-  assert.equal(questions[4].validate('StrongPass1!'), true)
+  // Port validator is at index 0
+  assert.equal(mainQuestions[0].validate('70000'), 'Port must be 1-65535')
+  assert.equal(mainQuestions[0].validate('4096'), true)
+
+  // Find password question
+  const pwdQuestion = mainQuestions.find(q => q.name === 'password')
+  assert.ok(pwdQuestion, 'should have password question')
+  assert.equal(pwdQuestion.validate('short'), 'Minimum 8 characters, At least 1 digit, At least 1 special character (!@#$%^&* etc.)')
+  assert.equal(pwdQuestion.validate('StrongPass1!'), true)
+
   assert.equal(warnings.length, 2)
+})
+
+// === Ngrok mode tests ===
+
+test('setup with ngrok mode generates tunnel unit and saves mode', async () => {
+  const calls = []
+  let savedConfig
+  const deps = mockDeps({
+    prompt: smartPrompt({ mode: { mode: 'ngrok' } }),
+    saveConfig: (cfg) => { savedConfig = cfg; calls.push('saveConfig') },
+    writeFileSync: (path, content) => {
+      if (typeof content === 'string' && content.includes('ngrok tunnel')) {
+        calls.push('tunnelUnit')
+      }
+    },
+    generateTunnelUnit: () => '[Unit]\nDescription=ngrok tunnel\n',
+    getLogs: () => 'Public URL: https://abc123.ngrok-free.app\n',
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(calls.includes('tunnelUnit'), 'should write tunnel unit')
+  assert.equal(savedConfig.mode, 'ngrok')
+  assert.equal(savedConfig.hostname, '127.0.0.1', 'ngrok mode forces hostname to 127.0.0.1')
+})
+
+test('setup with ngrok mode includes authtoken in env file', async () => {
+  let envContent
+  const deps = mockDeps({
+    prompt: smartPrompt({ mode: { mode: 'ngrok' } }),
+    writeFileSync: (path, content) => {
+      if (typeof content === 'string' && content.includes('NGROK_AUTHTOKEN')) {
+        envContent = content
+      }
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(envContent, 'env file should contain NGROK_AUTHTOKEN')
+  assert.ok(envContent.includes('NGROK_AUTHTOKEN=ngrok_test_token_12345'))
+})
+
+test('setup with local mode generates standard unit', async () => {
+  const calls = []
+  let savedConfig
+  const deps = mockDeps({
+    saveConfig: (cfg) => { savedConfig = cfg },
+    writeFileSync: (path, content) => {
+      if (content === 'unit-content') {
+        calls.push('standardUnit')
+      }
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(calls.includes('standardUnit'), 'should write standard unit')
+  assert.equal(savedConfig.mode, 'local')
+})
+
+test('setup ngrok mode skips hostname prompt', async () => {
+  let mainQuestionNames = []
+  const deps = mockDeps({
+    prompt: async (config) => {
+      if (!Array.isArray(config) && config.name === 'mode') return { mode: 'ngrok' }
+      if (!Array.isArray(config) && config.name === 'authtoken') return { authtoken: 'tok_12345678901' }
+      if (!Array.isArray(config) && config.name === 'keepCreds') return { keepCreds: false }
+      if (Array.isArray(config)) {
+        mainQuestionNames = config.map(q => q.name)
+        return {
+          port: '4096',
+          workdir: '/tmp/test',
+          username: 'admin',
+          password: 'StrongPass1!',
+        }
+      }
+      return {}
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(!mainQuestionNames.includes('hostname'), 'ngrok mode should not ask for hostname')
+  assert.ok(mainQuestionNames.includes('port'), 'should still ask for port')
+})
+
+test('setup ngrok mode reuses existing authtoken from env file', async () => {
+  let keepTokenAsked = false
+  let savedConfig
+  const deps = mockDeps({
+    readFileSync: () => 'OPENCODE_SERVER_USERNAME=admin\nOPENCODE_SERVER_PASSWORD=StrongPass1!\nNGROK_AUTHTOKEN=existing_token_12345\n',
+    prompt: async (config) => {
+      if (!Array.isArray(config) && config.name === 'mode') return { mode: 'ngrok' }
+      if (!Array.isArray(config) && config.name === 'keepToken') {
+        keepTokenAsked = true
+        return { keepToken: true }
+      }
+      if (!Array.isArray(config) && config.name === 'keepCreds') return { keepCreds: false }
+      if (Array.isArray(config)) {
+        return {
+          port: '4096',
+          workdir: '/tmp/test',
+          username: 'admin',
+          password: 'StrongPass1!',
+        }
+      }
+      return {}
+    },
+    saveConfig: (cfg) => { savedConfig = cfg },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(keepTokenAsked, 'should ask whether to keep existing token')
+  assert.equal(savedConfig.mode, 'ngrok')
+})
+
+test('setup reuses credentials when keepCreds is true', async () => {
+  let savedConfig
+  let envContent
+  let mainQuestionNames = []
+  const deps = mockDeps({
+    loadConfig: () => ({ port: 4096, hostname: 'localhost', workdir: '/tmp/test' }),
+    readFileSync: () => 'OPENCODE_SERVER_USERNAME=myuser\nOPENCODE_SERVER_PASSWORD=ExistingPass1!\n',
+    prompt: async (config) => {
+      if (!Array.isArray(config) && config.name === 'confirm') return { confirm: true }
+      if (!Array.isArray(config) && config.name === 'mode') return { mode: 'local' }
+      if (!Array.isArray(config) && config.name === 'keepCreds') return { keepCreds: true }
+      if (Array.isArray(config)) {
+        mainQuestionNames = config.map(q => q.name)
+        return {
+          port: '4096',
+          hostname: 'localhost',
+          workdir: '/tmp/test',
+        }
+      }
+      return {}
+    },
+    saveConfig: (cfg) => { savedConfig = cfg },
+    writeFileSync: (_path, content) => {
+      if (typeof content === 'string' && content.includes('OPENCODE_SERVER_USERNAME')) {
+        envContent = content
+      }
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(!mainQuestionNames.includes('username'), 'should not ask for username when keeping creds')
+  assert.ok(!mainQuestionNames.includes('password'), 'should not ask for password when keeping creds')
+  assert.ok(envContent.includes('OPENCODE_SERVER_USERNAME=myuser'))
+  assert.ok(envContent.includes('OPENCODE_SERVER_PASSWORD=ExistingPass1!'))
+  assert.equal(savedConfig.username, 'myuser')
+})
+
+test('setup ngrok shows public URL from logs', async () => {
+  const successMsgs = []
+  const deps = mockDeps({
+    prompt: smartPrompt({ mode: { mode: 'ngrok' } }),
+    getLogs: () => 'Some output\n  Public URL: https://abc123.ngrok-free.app\n  Backend: http://127.0.0.1:4096',
+    log: {
+      ...mockDeps().log,
+      success: (msg) => successMsgs.push(msg),
+    },
+  })
+
+  await setup('setup', [], deps)
+
+  assert.ok(successMsgs.some(m => m.includes('https://abc123.ngrok-free.app')), 'should display ngrok URL')
+})
+
+test('findNode returns node path from which', () => {
+  const result = findNode({
+    execSync: () => '/usr/bin/node\n',
+  })
+  assert.equal(result, '/usr/bin/node')
+})
+
+test('findNode falls back to process.execPath', () => {
+  const result = findNode({
+    execSync: () => { throw new Error('not found') },
+  })
+  assert.equal(result, process.execPath)
 })

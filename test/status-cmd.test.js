@@ -84,3 +84,30 @@ test('status command shows health warnings', async () => {
     console.log = originalLog
   }
 })
+
+test('status command shows ngrok tunnel mode info', async () => {
+  const logged = []
+  await statusCmd('status', [], {
+    ensureSetup: () => ({
+      hostname: '127.0.0.1',
+      port: 4096,
+      mode: 'ngrok',
+    }),
+    getStatus: () => ({
+      active: true,
+      subState: 'running',
+      pid: '5678',
+      startedAt: 'Wed 2026-03-18 10:00:00 UTC',
+    }),
+    isUnitInstalled: () => true,
+    existsSyncFn: () => false,
+    log: {
+      success: (msg) => logged.push(`success:${msg}`),
+      info: (msg) => logged.push(`info:${msg}`),
+      warn: (msg) => logged.push(`warn:${msg}`),
+    },
+  })
+
+  assert.ok(logged.some((l) => l.includes('Mode: ngrok tunnel')))
+  assert.ok(logged.some((l) => l.includes('Public URL: see "ocweb logs"')))
+})

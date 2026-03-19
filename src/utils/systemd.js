@@ -30,6 +30,24 @@ WantedBy=default.target
 `
 }
 
+export function generateTunnelUnit(nodePath, tunnelServerPath, config, envFilePath) {
+  return `[Unit]
+Description=OpenCode Web Server (ngrok tunnel)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${quoteSystemdPath(config.workdir)}
+ExecStart=${quoteSystemdPath(nodePath)} ${quoteSystemdPath(tunnelServerPath)}
+EnvironmentFile=${quoteSystemdPath(envFilePath)}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`
+}
+
 function run(cmd, opts = {}, deps = {}) {
   const { execSyncFn = execSync } = deps
   return execSyncFn(cmd, { encoding: 'utf8', stdio: opts.quiet ? 'pipe' : 'inherit', ...opts })

@@ -51,6 +51,13 @@ export function buildStatusLines(config, st, extra = {}, now = Date.now()) {
 
   lines.push(`URL: http://${config.hostname}:${config.port}`)
 
+  if (config.mode && config.mode !== 'local') {
+    lines.push(`Mode: ${config.mode} tunnel`)
+    if (config.mode === 'ngrok') {
+      lines.push('Public URL: see "ocweb logs"')
+    }
+  }
+
   if (extra.unitInstalled !== undefined) {
     lines.push(`Unit installed: ${extra.unitInstalled ? 'yes' : 'no'}`)
   }
