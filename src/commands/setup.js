@@ -140,7 +140,6 @@ export default async function setup(_command, _args, deps = {}) {
     buildEnvFileContent({
       username: response.username,
       password: response.password,
-      passwordHash: hashedPassword,
     }),
     'utf8'
   )

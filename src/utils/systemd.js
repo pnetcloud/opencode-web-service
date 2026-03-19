@@ -4,6 +4,14 @@ import { join } from 'node:path'
 
 const UNIT_NAME = 'ocweb.service'
 
+export function quoteSystemdPath(value) {
+  const str = String(value)
+  if (/\s|['"\\]/.test(str)) {
+    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  }
+  return str
+}
+
 export function generateUnit(opencodePath, config, envFilePath) {
   return `[Unit]
 Description=OpenCode Web Server
@@ -11,9 +19,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${config.workdir}
-ExecStart=${opencodePath} web --port ${config.port} --hostname ${config.hostname}
-EnvironmentFile=${envFilePath}
+WorkingDirectory=${quoteSystemdPath(config.workdir)}
+ExecStart=${quoteSystemdPath(opencodePath)} web --port ${config.port} --hostname ${config.hostname}
+EnvironmentFile=${quoteSystemdPath(envFilePath)}
 Restart=on-failure
 RestartSec=5
 
@@ -84,8 +92,10 @@ export function getStatus(deps = {}) {
   }
 }
 
-export function getLogs(lines = 50, deps = {}) {
-  return run(`journalctl --user -u ${UNIT_NAME} -n ${lines} --no-pager`, { quiet: true }, deps)
+export function getLogs(lines = 50, since = null, deps = {}) {
+  let cmd = `journalctl --user -u ${UNIT_NAME} -n ${lines} --no-pager`
+  if (since) cmd += ` --since "${since}"`
+  return run(cmd, { quiet: true }, deps)
 }
 
 export function enableLinger(deps = {}) {

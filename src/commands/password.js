@@ -46,7 +46,6 @@ export default async function password(_command, _args, deps = {}) {
     buildEnvFileContent({
       username: config.username || 'opencode',
       password: response.password,
-      passwordHash: hashedPassword,
     }),
     'utf8'
   )

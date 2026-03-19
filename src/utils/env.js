@@ -1,8 +1,7 @@
-export function buildEnvFileContent({ username, password, passwordHash }) {
+export function buildEnvFileContent({ username, password }) {
   return [
     `OPENCODE_SERVER_USERNAME=${username}`,
     `OPENCODE_SERVER_PASSWORD=${password}`,
-    `OCWEB_PASSWORD_HASH=${passwordHash}`,
     '',
   ].join('\n')
 }
