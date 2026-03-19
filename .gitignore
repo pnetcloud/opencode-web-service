@@ -5,6 +5,10 @@
 !src/
 !src/**
 
+# Track tests
+!test/
+!test/**
+
 # Track package
 !package.json
 !package-lock.json
