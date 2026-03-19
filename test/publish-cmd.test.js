@@ -269,14 +269,14 @@ test('extractChangelogSection returns null when no changelog file', () => {
 
 test('createGitHubRelease returns ok:true on success', () => {
   const result = createGitHubRelease('v1.0.0', '### Added\n- feature', {
-    execSync: () => '',
+    execFileSync: () => '',
   })
   assert.deepEqual(result, { ok: true })
 })
 
 test('createGitHubRelease returns ok:false on failure', () => {
   const result = createGitHubRelease('v1.0.0', null, {
-    execSync: () => { throw new Error('gh not found') },
+    execFileSync: () => { throw new Error('gh not found') },
   })
   assert.equal(result.ok, false)
   assert.ok(result.message.includes('gh not found'))

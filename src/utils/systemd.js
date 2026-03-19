@@ -3,6 +3,7 @@ import { homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
 const UNIT_NAME = 'ocweb.service'
+const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
 
 export function quoteSystemdPath(value) {
   const str = String(value)
@@ -133,4 +134,4 @@ export function isUnitInstalled(deps = {}) {
   }
 }
 
-export { UNIT_NAME }
+export { UNIT_NAME, SYSTEMD_USER_DIR }

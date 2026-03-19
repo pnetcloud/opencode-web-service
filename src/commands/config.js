@@ -1,13 +1,12 @@
 import { writeFileSync as _writeFileSync, existsSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { log as _log } from '../utils/output.js'
-import { ensureSetup as _ensureSetup, saveConfig as _saveConfig, getConfigDir } from '../utils/config.js'
-import { daemonReload as _daemonReload, restartService as _restartService, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, UNIT_NAME } from '../utils/systemd.js'
+import { ensureSetup as _ensureSetup, saveConfig as _saveConfig } from '../utils/config.js'
+import { ENV_FILE } from '../utils/env.js'
+import { daemonReload as _daemonReload, restartService as _restartService, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, UNIT_NAME, SYSTEMD_USER_DIR } from '../utils/systemd.js'
 import { findNode as _findNode, getTunnelServerPath as _getTunnelServerPath } from './setup.js'
 
-const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
-const ENV_FILE = join(getConfigDir(), 'env')
+
 
 const ALLOWED_KEYS = ['port', 'hostname', 'workdir']
 
@@ -44,6 +43,7 @@ export function normalizeConfigValue(key, value, deps = {}) {
 
 export function buildConfigLines(cfg) {
   return [
+    `Mode:       ${cfg.mode || 'local'}`,
     `Port:       ${cfg.port}`,
     `Hostname:   ${cfg.hostname}`,
     `Workdir:    ${cfg.workdir}`,

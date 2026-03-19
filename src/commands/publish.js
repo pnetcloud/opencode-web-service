@@ -1,4 +1,4 @@
-import { execSync as _execSync } from 'node:child_process'
+import { execSync as _execSync, execFileSync as _execFileSync } from 'node:child_process'
 import { readFileSync as _readFileSync, existsSync as _existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -119,15 +119,15 @@ export function extractChangelogSection(version, deps = {}) {
 }
 
 export function createGitHubRelease(tag, notes, deps = {}) {
-  const { execSync = _execSync } = deps
+  const { execFileSync = _execFileSync } = deps
   try {
-    const args = ['gh', 'release', 'create', tag, '--title', tag]
+    const args = ['release', 'create', tag, '--title', tag]
     if (notes) {
       args.push('--notes', notes)
     } else {
       args.push('--generate-notes')
     }
-    execSync(args.join(' '), { cwd: PKG_ROOT, stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('gh', args, { cwd: PKG_ROOT, stdio: 'pipe', encoding: 'utf8' })
     return { ok: true }
   } catch (err) {
     return { ok: false, message: err.message }

@@ -1,5 +1,4 @@
 import { spawn as _spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { loadConfig as _loadConfig } from './utils/config.js'
 import { parseEnvFile as _parseEnvFile } from './utils/env.js'
 
@@ -107,7 +106,6 @@ export default async function boot(deps = {}) {
 }
 
 // Direct execution
-const __filename = fileURLToPath(import.meta.url)
 if (process.argv[1] && process.argv[1].endsWith('tunnel-server.js')) {
   boot()
 }

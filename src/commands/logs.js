@@ -33,7 +33,10 @@ export default async function logs(_command, args, deps = {}) {
 
   if (opts.follow) {
     const cmdArgs = ['--user', '-u', UNIT_NAME, '-n', String(opts.lines), '--no-pager', '-f']
-    if (opts.since) cmdArgs.push('--since', opts.since)
+    if (opts.since) {
+      const safe = String(opts.since).replace(/[^a-zA-Z0-9 :._\-]/g, '')
+      cmdArgs.push('--since', safe)
+    }
     const child = spawn('journalctl', cmdArgs, { stdio: 'inherit' })
     await new Promise((resolve) => child.on('close', resolve))
     return

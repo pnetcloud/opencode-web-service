@@ -1,12 +1,9 @@
 import { execSync as _execSync } from 'node:child_process'
 import { mkdirSync as _mkdirSync, writeFileSync as _writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, saveConfig as _saveConfig } from '../utils/config.js'
-import { stopService as _stopService, startService as _startService, daemonReload as _daemonReload } from '../utils/systemd.js'
-
-const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
+import { stopService as _stopService, startService as _startService, daemonReload as _daemonReload, SYSTEMD_USER_DIR } from '../utils/systemd.js'
 const TIMER_NAME = 'ocweb-upgrade.timer'
 const UPGRADE_SERVICE_NAME = 'ocweb-upgrade.service'
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']

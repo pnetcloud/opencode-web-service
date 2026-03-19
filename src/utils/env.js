@@ -1,4 +1,8 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { getConfigDir } from './config.js'
+
+export const ENV_FILE = join(getConfigDir(), 'env')
 
 export function parseEnvFile(filePath, deps = {}) {
   const { readFileSyncFn = readFileSync } = deps

@@ -1,13 +1,12 @@
 import { writeFileSync as _writeFileSync, chmodSync as _chmodSync } from 'node:fs'
-import { join } from 'node:path'
 import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
-import { ensureSetup as _ensureSetup, saveConfig as _saveConfig, getConfigDir } from '../utils/config.js'
+import { ensureSetup as _ensureSetup, saveConfig as _saveConfig } from '../utils/config.js'
 import { validatePassword, hashPassword as _hashPassword } from '../utils/password.js'
-import { buildEnvFileContent, parseEnvFile as _parseEnvFile } from '../utils/env.js'
+import { buildEnvFileContent, parseEnvFile as _parseEnvFile, ENV_FILE } from '../utils/env.js'
 import { restartService as _restartService } from '../utils/systemd.js'
 
-const ENV_FILE = join(getConfigDir(), 'env')
+
 
 export default async function password(_command, _args, deps = {}) {
   const {

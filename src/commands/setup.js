@@ -7,11 +7,10 @@ import prompts from 'prompts'
 import { log as _log } from '../utils/output.js'
 import { saveConfig as _saveConfig, loadConfig as _loadConfig, getConfigDir } from '../utils/config.js'
 import { validatePassword, hashPassword as _hashPassword } from '../utils/password.js'
-import { buildEnvFileContent, parseEnvFile as _parseEnvFile } from '../utils/env.js'
-import { daemonReload as _daemonReload, enableService as _enableService, startService as _startService, restartService as _restartService, enableLinger as _enableLinger, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, getLogs as _getLogs, UNIT_NAME } from '../utils/systemd.js'
+import { buildEnvFileContent, parseEnvFile as _parseEnvFile, ENV_FILE } from '../utils/env.js'
+import { daemonReload as _daemonReload, enableService as _enableService, startService as _startService, restartService as _restartService, enableLinger as _enableLinger, generateUnit as _generateUnit, generateTunnelUnit as _generateTunnelUnit, getLogs as _getLogs, UNIT_NAME, SYSTEMD_USER_DIR } from '../utils/systemd.js'
 
-const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
-const ENV_FILE = join(getConfigDir(), 'env')
+
 
 export function findOpencode(deps = {}) {
   const { execSync = _execSync } = deps
@@ -35,8 +34,6 @@ export function getTunnelServerPath() {
   const __dirname = dirname(fileURLToPath(import.meta.url))
   return join(__dirname, '..', 'tunnel-server.js')
 }
-
-
 
 export default async function setup(_command, _args, deps = {}) {
   const {

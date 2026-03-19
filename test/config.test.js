@@ -10,6 +10,7 @@ test('buildConfigLines always includes schedule field', () => {
     workdir: '/tmp/workdir',
     username: 'opencode',
   }), [
+    'Mode:       local',
     'Port:       3000',
     'Hostname:   localhost',
     'Workdir:    /tmp/workdir',
@@ -35,7 +36,7 @@ test('buildConfigLines shows configured auto-update schedule', () => {
       workdir: '/tmp/workdir',
       username: 'opencode',
       upgradeSchedule: '0 3 * * *',
-    })[4],
+    })[5],
     'Auto-update: 0 3 * * *'
   )
 })
@@ -46,7 +47,7 @@ test('buildConfigLines falls back to default username', () => {
       port: 3000,
       hostname: 'localhost',
       workdir: '/tmp/workdir',
-    })[3],
+    })[4],
     'Username:   opencode'
   )
 })

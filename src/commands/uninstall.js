@@ -1,13 +1,10 @@
 import { unlinkSync as _unlinkSync, rmSync as _rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import prompts from 'prompts'
 import { execSync as _execSync } from 'node:child_process'
 import { log as _log } from '../utils/output.js'
 import { ensureSetup as _ensureSetup, getConfigDir } from '../utils/config.js'
-import { stopService as _stopService, disableService as _disableService, daemonReload as _daemonReload, UNIT_NAME } from '../utils/systemd.js'
-
-const SYSTEMD_USER_DIR = join(homedir(), '.config', 'systemd', 'user')
+import { stopService as _stopService, disableService as _disableService, daemonReload as _daemonReload, UNIT_NAME, SYSTEMD_USER_DIR } from '../utils/systemd.js'
 
 export default async function uninstall(_command, _args, deps = {}) {
   const {
